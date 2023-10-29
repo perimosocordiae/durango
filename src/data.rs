@@ -24,7 +24,7 @@ pub enum HexDirection {
     NorthWest,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum Terrain {
     Invalid, // Invalid terrain
     Jungle,  // Jungle movement
@@ -44,7 +44,21 @@ pub struct Node {
 }
 impl Node {
     pub fn print_dot(&self, idx: usize) -> () {
-        println!("  N{} [label=\"{:?} {}\"]", idx, self.terrain, self.cost);
+        if matches!(self.terrain, Terrain::Invalid) {
+            return;
+        }
+        let fillcolor = match self.terrain {
+            Terrain::Jungle => "green",
+            Terrain::Desert => "yellow",
+            Terrain::Water => "blue",
+            Terrain::Village => "red",
+            Terrain::Swamp => "gray",
+            _ => "white",
+        };
+        println!(
+            "  N{} [label=\"{}: ({})\",fillcolor={}]",
+            idx, idx, self.cost, fillcolor
+        );
         for neighbor in self.neighbors.iter() {
             if *neighbor != 0 {
                 println!("  N{} -> N{}", idx, neighbor);
@@ -91,12 +105,24 @@ fn load_board(board: char) -> Vec<Node> {
 
 fn side_offsets(side: u8) -> [usize; 4] {
     match side {
-        0 => [0, 1, 2, 3],
-        1 => [0, 4, 9, 15],
-        2 => [15, 22, 28, 33],
-        3 => [33, 34, 35, 36],
-        4 => [36, 32, 27, 21],
-        5 => [21, 14, 8, 3],
+        0 => [0, 1, 2, 3],     // Bottom
+        1 => [15, 9, 4, 0],    // Lower Left
+        2 => [33, 28, 22, 15], // Upper Left
+        3 => [33, 34, 35, 36], // Top
+        4 => [21, 27, 32, 36], // Upper Right
+        5 => [3, 8, 14, 21],   // Lower Right
+        _ => panic!("Invalid side"),
+    }
+}
+
+fn side_connections(side: u8) -> (usize, usize) {
+    match side {
+        0 => (2, 3), // Bottom
+        1 => (3, 4), // Lower Left
+        2 => (4, 5), // Upper Left
+        3 => (0, 5), // Top
+        4 => (0, 1), // Upper Right
+        5 => (1, 2), // Lower Right
         _ => panic!("Invalid side"),
     }
 }
@@ -123,6 +149,7 @@ pub fn load_nodes(layout: &[LayoutInfo]) -> Vec<Node> {
             // Connect the boards.
             let prev_side = layout[i - 1].next_side;
             let curr_side = info.bottom;
+            // TODO: These result in flipped boards sometimes.
             let prev_offsets = side_offsets(prev_side);
             let curr_offsets = side_offsets(curr_side);
             let curr_start = result.len();
@@ -130,23 +157,22 @@ pub fn load_nodes(layout: &[LayoutInfo]) -> Vec<Node> {
             let prev1 = prev_start + prev_offsets[1];
             let prev2 = prev_start + prev_offsets[2];
             let prev3 = prev_start + prev_offsets[3];
-            // TODO: Set the correct neighbors based on info.bottom
-            // The current setup works for info.bottom == 0 only.
-            board_nodes[curr_offsets[0]].neighbors[2] = prev0;
-            board_nodes[curr_offsets[1]].neighbors[2] = prev1;
-            board_nodes[curr_offsets[1]].neighbors[3] = prev0;
-            board_nodes[curr_offsets[2]].neighbors[2] = prev2;
-            board_nodes[curr_offsets[2]].neighbors[3] = prev1;
-            board_nodes[curr_offsets[3]].neighbors[2] = prev3;
-            board_nodes[curr_offsets[3]].neighbors[3] = prev2;
-            // TODO: fix this based on next_side. Current setup assumes ns=3.
-            result[prev0].neighbors[5] = curr_start + curr_offsets[0];
-            result[prev0].neighbors[0] = curr_start + curr_offsets[1];
-            result[prev1].neighbors[5] = curr_start + curr_offsets[1];
-            result[prev1].neighbors[0] = curr_start + curr_offsets[2];
-            result[prev2].neighbors[5] = curr_start + curr_offsets[2];
-            result[prev2].neighbors[0] = curr_start + curr_offsets[3];
-            result[prev3].neighbors[5] = curr_start + curr_offsets[3];
+            let (n1, n2) = side_connections(curr_side);
+            board_nodes[curr_offsets[0]].neighbors[n1] = prev0;
+            board_nodes[curr_offsets[1]].neighbors[n1] = prev1;
+            board_nodes[curr_offsets[1]].neighbors[n2] = prev0;
+            board_nodes[curr_offsets[2]].neighbors[n1] = prev2;
+            board_nodes[curr_offsets[2]].neighbors[n2] = prev1;
+            board_nodes[curr_offsets[3]].neighbors[n1] = prev3;
+            board_nodes[curr_offsets[3]].neighbors[n2] = prev2;
+            let (n2, n1) = side_connections(prev_side);
+            result[prev0].neighbors[n1] = curr_start + curr_offsets[0];
+            result[prev0].neighbors[n2] = curr_start + curr_offsets[1];
+            result[prev1].neighbors[n1] = curr_start + curr_offsets[1];
+            result[prev1].neighbors[n2] = curr_start + curr_offsets[2];
+            result[prev2].neighbors[n1] = curr_start + curr_offsets[2];
+            result[prev2].neighbors[n2] = curr_start + curr_offsets[3];
+            result[prev3].neighbors[n1] = curr_start + curr_offsets[3];
 
             prev_start = curr_start;
         }

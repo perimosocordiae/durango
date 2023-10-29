@@ -6,7 +6,7 @@ use durango::data;
 
 #[derive(Parser)]
 struct Args {
-    #[clap(short, long, default_value = "A,0,3;A,0,3", value_delimiter = ';')]
+    #[clap(short, long, default_value = "B,0,3;B,0,3", value_delimiter = ';')]
     layout: Vec<String>,
 }
 
@@ -16,6 +16,8 @@ fn main() {
     let layout = data::load_from_csv::<data::LayoutInfo>(&layout_csv).unwrap();
     let nodes = data::load_nodes(&layout);
     println!("digraph {{");
+    println!("  overlap=false;");
+    println!("  node [style=filled];");
     // Iterate over all nodes except the first one.
     for (i, node) in nodes.iter().enumerate().skip(1) {
         node.print_dot(i);
