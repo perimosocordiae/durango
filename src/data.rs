@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-fn load_from_csv<T: for<'de> Deserialize<'de>>(
+pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
     data: &str,
 ) -> Result<Vec<T>, Box<dyn std::error::Error>> {
     let mut rdr = csv::ReaderBuilder::new()
@@ -24,7 +24,7 @@ pub enum HexDirection {
     NorthWest,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum Terrain {
     Invalid, // Invalid terrain
     Jungle,  // Jungle movement
@@ -42,14 +42,25 @@ pub struct Node {
     // Indices of neighboring nodes, in HexDirection order.
     neighbors: [usize; 6],
 }
+impl Node {
+    pub fn print_dot(&self, idx: usize) -> () {
+        println!("  N{} [label=\"{:?} {}\"]", idx, self.terrain, self.cost);
+        for neighbor in self.neighbors.iter() {
+            if *neighbor != 0 {
+                println!("  N{} -> N{}", idx, neighbor);
+            }
+        }
+    }
+}
 
+#[derive(Serialize, Deserialize)]
 pub struct LayoutInfo {
     board: char,
     bottom: u8,
     next_side: u8,
 }
 impl LayoutInfo {
-    fn new(board: char, bottom: u8, next_side: u8) -> Self {
+    pub fn new(board: char, bottom: u8, next_side: u8) -> Self {
         Self {
             board,
             bottom,
