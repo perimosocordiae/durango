@@ -1,6 +1,8 @@
-use crate::data::Node;
+use crate::data::{HexDirection, Node, Terrain};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
+
+const HAND_SIZE: usize = 4;
 
 #[derive(Serialize, Deserialize)]
 enum CardAction {
@@ -42,6 +44,32 @@ struct GameState {
     shop: Vec<BuyableCard>,
     storage: Vec<BuyableCard>,
     curr_player_idx: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+enum BuyIndex {
+    Shop(usize),
+    Storage(usize),
+}
+
+#[derive(Serialize, Deserialize)]
+struct BuyCardAction {
+    cards: Vec<usize>,
+    index: BuyIndex,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MoveAction {
+    cards: Vec<usize>,
+    path: Vec<HexDirection>,
+}
+
+#[derive(Serialize, Deserialize)]
+enum PlayerAction {
+    BuyCard(BuyCardAction),
+    Move(MoveAction),
+    Discard(Vec<usize>),
+    FinishTurn,
 }
 
 //////////////////////////
@@ -115,7 +143,7 @@ impl Player {
             Card::sailor(),
         ];
         deck.shuffle(rng);
-        let hand = deck.split_off(4);
+        let hand = deck.split_off(HAND_SIZE);
         Self {
             position,
             deck,
@@ -124,11 +152,17 @@ impl Player {
             discard: Vec::new(),
         }
     }
+    fn mark_played(&mut self, cards: &[usize]) {
+        for i in cards {
+            self.played.push(self.hand.swap_remove(*i));
+        }
+    }
 }
 
 impl GameState {
     fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
         Self {
+            // TODO: Load the board here.
             nodes: Vec::new(),
             players: (0..num_players).map(|i| Player::new(i, rng)).collect(),
             shop: vec![
@@ -173,6 +207,84 @@ impl GameState {
             ],
             curr_player_idx: 0,
         }
+    }
+
+    fn curr_player(&self) -> &Player {
+        &self.players[self.curr_player_idx]
+    }
+
+    fn process_action(&mut self, action: &PlayerAction) -> Result<(), String> {
+        match action {
+            PlayerAction::BuyCard(buy) => {
+                {
+                    let bucks: u8 = buy
+                        .cards
+                        .iter()
+                        .map(|i| self.curr_player().deck[*i].gold_value())
+                        .sum();
+                    let mut card = match buy.index {
+                        BuyIndex::Shop(i) => &mut self.shop[i],
+                        BuyIndex::Storage(i) => &mut self.storage[i],
+                    };
+                    if card.quantity == 0 {
+                        return Err("Card is out of stock".to_string());
+                    }
+                    if bucks < card.cost {
+                        return Err(format!(
+                            "Not enough gold: have {}, need {}",
+                            bucks, card.cost
+                        ));
+                    }
+                    card.quantity -= 1;
+                }
+                self.players[self.curr_player_idx].mark_played(&buy.cards);
+            }
+            PlayerAction::Move(mv) => {
+                let mut idx = self.curr_player().position;
+                let mut move_cost: [u8; 3] = [0, 0, 0];
+                for dir in &mv.path {
+                    let next_idx = self.nodes[idx].neighbors[*dir as usize];
+                    match self.nodes[next_idx].terrain {
+                        Terrain::Jungle => move_cost[0] += 1,
+                        Terrain::Desert => move_cost[1] += 1,
+                        Terrain::Water => move_cost[2] += 1,
+                        Terrain::Invalid => return Err("Invalid move".to_string()),
+                        Terrain::Cave => todo!(),
+                        Terrain::Swamp => todo!(),
+                        Terrain::Village => todo!(),
+                    }
+                    idx = next_idx;
+                }
+                let mut player = &mut self.players[self.curr_player_idx];
+                // TODO: check move_cost against mv.card.movement before updating the player's position.
+                player.position = idx;
+                player.mark_played(&mv.cards);
+            }
+            PlayerAction::Discard(cards) => {
+                self.players[self.curr_player_idx].mark_played(&cards);
+            }
+            PlayerAction::FinishTurn => {
+                // Move all cards from 'played' pile to 'discard' pile.
+                let mut player = &mut self.players[self.curr_player_idx];
+                player.discard.append(&mut player.played);
+                // Refill the hand from the deck.
+                let mut deck = &mut player.deck;
+                let mut hand = &mut player.hand;
+                while hand.len() < HAND_SIZE {
+                    if deck.is_empty() && !player.discard.is_empty() {
+                        // Shuffle the discard pile into the deck.
+                        deck.append(&mut player.discard);
+                        deck.shuffle(&mut rand::thread_rng());
+                    }
+                    if let Some(card) = deck.pop() {
+                        hand.push(card);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 

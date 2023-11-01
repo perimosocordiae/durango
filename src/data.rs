@@ -37,10 +37,10 @@ pub enum Terrain {
 
 #[derive(Serialize, Deserialize)]
 pub struct Node {
-    terrain: Terrain,
-    cost: u8,
+    pub terrain: Terrain,
+    pub cost: u8,
     // Indices of neighboring nodes, in HexDirection order.
-    neighbors: [usize; 6],
+    pub neighbors: [usize; 6],
 }
 impl Node {
     pub fn print_dot(&self, idx: usize) -> () {
