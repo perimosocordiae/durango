@@ -145,7 +145,7 @@ pub fn load_nodes(layout: &[LayoutInfo]) -> Vec<Node> {
                 }
             }
         }
-        if i > 0 {
+        if i > 0 && !board_nodes.is_empty() {
             // Connect the boards.
             let prev_side = layout[i - 1].next_side;
             let curr_side = info.bottom;
@@ -181,7 +181,7 @@ pub fn load_nodes(layout: &[LayoutInfo]) -> Vec<Node> {
     result
 }
 
-fn easy_1() -> [LayoutInfo; 6] {
+pub fn easy_1() -> [LayoutInfo; 6] {
     [
         LayoutInfo::new('B', 5, 2),
         LayoutInfo::new('C', 0, 3),

@@ -1,4 +1,4 @@
-use crate::data::{HexDirection, Node, Terrain};
+use crate::data::{HexDirection, Node, Terrain, easy_1, load_nodes};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -162,8 +162,7 @@ impl Player {
 impl GameState {
     fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
         Self {
-            // TODO: Load the board here.
-            nodes: Vec::new(),
+            nodes: load_nodes(&easy_1()),
             players: (0..num_players).map(|i| Player::new(i, rng)).collect(),
             shop: vec![
                 // Scout
