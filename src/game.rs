@@ -54,12 +54,10 @@ pub enum PlayerAction {
 // Implementations      //
 //////////////////////////
 
-fn move_cards(cards: &[usize], src: &mut Vec<Card>, dest: &mut Vec<Card>) {
-    let mut rev_sorted_cards = cards.to_vec();
-    rev_sorted_cards.sort_unstable_by(|a, b| b.cmp(a));
-    for i in rev_sorted_cards {
-        dest.push(src.swap_remove(i));
-    }
+fn rev_sorted(xs: &[usize]) -> Vec<usize> {
+    let mut result = xs.to_vec();
+    result.sort_unstable_by(|a, b| b.cmp(a));
+    result
 }
 
 impl Player {
@@ -86,22 +84,23 @@ impl Player {
     }
     /// Move specified `cards` from self.hand into self.played.
     fn mark_played(&mut self, cards: &[usize]) {
-        move_cards(cards, &mut self.hand, &mut self.played);
-    }
-    /// Move specified `cards` from self.hand into self.discard.
-    fn discard_cards(&mut self, cards: &[usize]) {
-        move_cards(cards, &mut self.hand, &mut self.discard);
+        for i in rev_sorted(cards) {
+            self.played.push(self.hand.swap_remove(i));
+        }
     }
     /// Remove specified `cards` from self.hand permanently.
     fn trash_cards(&mut self, cards: &[usize]) {
-        let mut tmp = Vec::new();
-        move_cards(cards, &mut self.hand, &mut tmp);
+        for i in rev_sorted(cards) {
+            self.hand.swap_remove(i);
+        }
     }
     /// Clean up after the turn is over.
     fn finish_turn(&mut self, rng: &mut impl rand::Rng) {
         // Trash any played cards marked as single-use.
         for i in (0..self.played.len()).rev() {
             if self.played[i].single_use {
+                // TODO: avoid trashing cards if they weren't used for their
+                // specified single-use purpose.
                 self.played.swap_remove(i);
             }
         }
@@ -191,7 +190,7 @@ impl GameState {
             PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
             PlayerAction::Move(mv) => self.handle_move(mv)?,
             PlayerAction::Discard(cards) => {
-                self.players[self.curr_player_idx].discard_cards(cards);
+                self.players[self.curr_player_idx].mark_played(cards);
             }
             PlayerAction::FinishTurn => {
                 self.players[self.curr_player_idx].finish_turn(&mut rand::thread_rng());
@@ -202,11 +201,8 @@ impl GameState {
 
     fn handle_buy(&mut self, buy: &BuyCardAction) -> Result<(), String> {
         {
-            let bucks: u8 = buy
-                .cards
-                .iter()
-                .map(|i| self.curr_player().deck[*i].gold_value())
-                .sum();
+            let deck = &self.curr_player().deck;
+            let bucks: u8 = buy.cards.iter().map(|i| deck[*i].gold_value()).sum();
             let card = match buy.index {
                 BuyIndex::Shop(i) => &mut self.shop[i],
                 BuyIndex::Storage(i) => &mut self.storage[i],
@@ -299,12 +295,8 @@ impl GameState {
         // Update the player's position and cards.
         let player = &mut self.players[self.curr_player_idx];
         player.position = idx;
-        if card_cost > 0 {
-            if matches!(self.nodes[idx].terrain, Terrain::Village) {
-                player.trash_cards(&mv.cards);
-            } else {
-                player.discard_cards(&mv.cards);
-            }
+        if card_cost > 0 && matches!(self.nodes[idx].terrain, Terrain::Village) {
+            player.trash_cards(&mv.cards);
         } else {
             player.mark_played(&mv.cards);
         }
