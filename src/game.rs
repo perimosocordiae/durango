@@ -32,14 +32,14 @@ pub enum BuyIndex {
 
 #[derive(Serialize, Deserialize)]
 pub struct BuyCardAction {
-    cards: Vec<usize>,
-    index: BuyIndex,
+    pub cards: Vec<usize>,
+    pub index: BuyIndex,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct MoveAction {
-    cards: Vec<usize>,
-    path: Vec<HexDirection>,
+    pub cards: Vec<usize>,
+    pub path: Vec<HexDirection>,
 }
 
 #[derive(Serialize, Deserialize)]

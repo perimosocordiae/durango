@@ -23,6 +23,19 @@ pub enum HexDirection {
     West,
     NorthWest,
 }
+impl HexDirection {
+    pub fn from_index(idx: usize) -> Self {
+        match idx {
+            0 => Self::NorthEast,
+            1 => Self::East,
+            2 => Self::SouthEast,
+            3 => Self::SouthWest,
+            4 => Self::West,
+            5 => Self::NorthWest,
+            _ => panic!("Invalid index"),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum Terrain {
