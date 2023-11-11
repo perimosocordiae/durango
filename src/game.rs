@@ -1,33 +1,10 @@
+use crate::cards::{BuyableCard, Card, CardAction};
 use crate::data::{easy_1, load_nodes, HexDirection, Node, Terrain};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 const HAND_SIZE: usize = 4;
 const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
-
-#[derive(Serialize, Deserialize)]
-pub enum CardAction {
-    FreeBuy,
-    FreeMove,
-    Draw(usize),
-    DrawAndTrash(usize),
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct BuyableCard {
-    cost: u8,
-    movement: [u8; 3],
-    single_use: bool,
-    action: Option<CardAction>,
-    quantity: u8,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Card {
-    // [Jungle, Desert, Water]
-    movement: [u8; 3],
-    single_use: bool,
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct Player {
@@ -76,60 +53,6 @@ pub enum PlayerAction {
 //////////////////////////
 // Implementations      //
 //////////////////////////
-
-impl BuyableCard {
-    fn regular(cost: u8, movement: [u8; 3]) -> Self {
-        Self {
-            cost,
-            movement,
-            single_use: false,
-            action: None,
-            quantity: 3,
-        }
-    }
-    fn single_use(cost: u8, movement: [u8; 3]) -> Self {
-        Self {
-            cost,
-            movement,
-            single_use: true,
-            action: None,
-            quantity: 3,
-        }
-    }
-    fn action(cost: u8, action: CardAction, single_use: bool) -> Self {
-        Self {
-            cost,
-            movement: [0, 0, 0],
-            single_use,
-            action: Some(action),
-            quantity: 3,
-        }
-    }
-}
-
-impl Card {
-    fn gold_value(&self) -> u8 {
-        1.max(2 * self.movement[1])
-    }
-    fn explorer() -> Self {
-        Self {
-            movement: [1, 0, 0],
-            single_use: false,
-        }
-    }
-    fn traveler() -> Self {
-        Self {
-            movement: [0, 1, 0],
-            single_use: false,
-        }
-    }
-    fn sailor() -> Self {
-        Self {
-            movement: [0, 0, 1],
-            single_use: false,
-        }
-    }
-}
 
 fn move_cards(cards: &[usize], src: &mut Vec<Card>, dest: &mut Vec<Card>) {
     let mut rev_sorted_cards = cards.to_vec();
@@ -397,26 +320,5 @@ mod tests {
         assert_eq!(game.players.len(), 4);
         assert_eq!(game.shop.len(), 6);
         assert_eq!(game.storage.len(), 12);
-    }
-
-    #[test]
-    fn gold_value() {
-        let card = Card {
-            movement: [0, 1, 0],
-            single_use: false,
-        };
-        assert_eq!(card.gold_value(), 2);
-
-        let card = Card {
-            movement: [0, 0, 1],
-            single_use: false,
-        };
-        assert_eq!(card.gold_value(), 1);
-
-        let card = Card {
-            movement: [0, 5, 0],
-            single_use: false,
-        };
-        assert_eq!(card.gold_value(), 10);
     }
 }
