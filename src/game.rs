@@ -6,7 +6,7 @@ const HAND_SIZE: usize = 4;
 const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
 
 #[derive(Serialize, Deserialize)]
-enum CardAction {
+pub enum CardAction {
     FreeBuy,
     FreeMove,
     Draw(usize),
@@ -14,7 +14,7 @@ enum CardAction {
 }
 
 #[derive(Serialize, Deserialize)]
-struct BuyableCard {
+pub struct BuyableCard {
     cost: u8,
     movement: [u8; 3],
     single_use: bool,
@@ -23,27 +23,27 @@ struct BuyableCard {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Card {
+pub struct Card {
     // [Jungle, Desert, Water]
     movement: [u8; 3],
     single_use: bool,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Player {
-    position: usize,
+pub struct Player {
+    pub position: usize,
     deck: Vec<Card>,
-    hand: Vec<Card>,
+    pub hand: Vec<Card>,
     played: Vec<Card>,
     discard: Vec<Card>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct GameState {
-    nodes: Vec<Node>,
+    pub nodes: Vec<Node>,
     players: Vec<Player>,
-    shop: Vec<BuyableCard>,
-    storage: Vec<BuyableCard>,
+    pub shop: Vec<BuyableCard>,
+    pub storage: Vec<BuyableCard>,
     curr_player_idx: usize,
 }
 
@@ -249,7 +249,7 @@ impl GameState {
         }
     }
 
-    fn curr_player(&self) -> &Player {
+    pub fn curr_player(&self) -> &Player {
         &self.players[self.curr_player_idx]
     }
 
