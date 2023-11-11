@@ -249,10 +249,20 @@ impl GameState {
         }
     }
 
+    /// The player whose turn it is.
     pub fn curr_player(&self) -> &Player {
         &self.players[self.curr_player_idx]
     }
 
+    /// Is the specified node occupied by a player other than the current player?
+    pub fn is_occupied(&self, idx: usize) -> bool {
+        self.players
+            .iter()
+            .enumerate()
+            .any(|(i, p)| p.position == idx && i != self.curr_player_idx)
+    }
+
+    /// Process the specified `action` for the current player.
     pub fn process_action(&mut self, action: &PlayerAction) -> Result<(), String> {
         match action {
             PlayerAction::BuyCard(buy) => {
@@ -298,6 +308,9 @@ impl GameState {
                         }
                         Terrain::Swamp => card_cost += next_node.cost,
                         Terrain::Village => card_cost += next_node.cost,
+                    }
+                    if self.is_occupied(next_idx) {
+                        return Err("Cannot move to occupied node".to_string());
                     }
                     idx = next_idx;
                 }
