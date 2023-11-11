@@ -1,8 +1,9 @@
-use crate::data::{HexDirection, Node, Terrain, easy_1, load_nodes};
+use crate::data::{easy_1, load_nodes, HexDirection, Node, Terrain};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 const HAND_SIZE: usize = 4;
+const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
 
 #[derive(Serialize, Deserialize)]
 enum CardAction {
@@ -38,7 +39,7 @@ struct Player {
 }
 
 #[derive(Serialize, Deserialize)]
-struct GameState {
+pub struct GameState {
     nodes: Vec<Node>,
     players: Vec<Player>,
     shop: Vec<BuyableCard>,
@@ -47,25 +48,25 @@ struct GameState {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-enum BuyIndex {
+pub enum BuyIndex {
     Shop(usize),
     Storage(usize),
 }
 
 #[derive(Serialize, Deserialize)]
-struct BuyCardAction {
+pub struct BuyCardAction {
     cards: Vec<usize>,
     index: BuyIndex,
 }
 
 #[derive(Serialize, Deserialize)]
-struct MoveAction {
+pub struct MoveAction {
     cards: Vec<usize>,
     path: Vec<HexDirection>,
 }
 
 #[derive(Serialize, Deserialize)]
-enum PlayerAction {
+pub enum PlayerAction {
     BuyCard(BuyCardAction),
     Move(MoveAction),
     Discard(Vec<usize>),
@@ -130,6 +131,14 @@ impl Card {
     }
 }
 
+fn move_cards(cards: &[usize], src: &mut Vec<Card>, dest: &mut Vec<Card>) {
+    let mut rev_sorted_cards = cards.to_vec();
+    rev_sorted_cards.sort_unstable_by(|a, b| b.cmp(a));
+    for i in rev_sorted_cards {
+        dest.push(src.swap_remove(i));
+    }
+}
+
 impl Player {
     fn new(position: usize, rng: &mut impl rand::Rng) -> Self {
         let mut deck = vec![
@@ -152,15 +161,47 @@ impl Player {
             discard: Vec::new(),
         }
     }
+    /// Move specified `cards` from self.hand into self.played.
     fn mark_played(&mut self, cards: &[usize]) {
-        for i in cards {
-            self.played.push(self.hand.swap_remove(*i));
+        move_cards(cards, &mut self.hand, &mut self.played);
+    }
+    /// Move specified `cards` from self.hand into self.discard.
+    fn discard_cards(&mut self, cards: &[usize]) {
+        move_cards(cards, &mut self.hand, &mut self.discard);
+    }
+    /// Remove specified `cards` from self.hand permanently.
+    fn trash_cards(&mut self, cards: &[usize]) {
+        let mut tmp = Vec::new();
+        move_cards(cards, &mut self.hand, &mut tmp);
+    }
+    /// Clean up after the turn is over.
+    fn finish_turn(&mut self, rng: &mut impl rand::Rng) {
+        // Trash any played cards marked as single-use.
+        for i in (0..self.played.len()).rev() {
+            if self.played[i].single_use {
+                self.played.swap_remove(i);
+            }
+        }
+        // Discard any remaining played cards.
+        self.discard.append(&mut self.played);
+        // Refill the hand from the deck.
+        while self.hand.len() < HAND_SIZE {
+            if self.deck.is_empty() && !self.discard.is_empty() {
+                // Shuffle the discard pile into the deck.
+                self.deck.append(&mut self.discard);
+                self.deck.shuffle(rng);
+            }
+            if let Some(card) = self.deck.pop() {
+                self.hand.push(card);
+            } else {
+                break;
+            }
         }
     }
 }
 
 impl GameState {
-    fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
+    pub fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
         Self {
             nodes: load_nodes(&easy_1()),
             players: (0..num_players).map(|i| Player::new(i, rng)).collect(),
@@ -212,7 +253,7 @@ impl GameState {
         &self.players[self.curr_player_idx]
     }
 
-    fn process_action(&mut self, action: &PlayerAction) -> Result<(), String> {
+    pub fn process_action(&mut self, action: &PlayerAction) -> Result<(), String> {
         match action {
             PlayerAction::BuyCard(buy) => {
                 {
@@ -221,7 +262,7 @@ impl GameState {
                         .iter()
                         .map(|i| self.curr_player().deck[*i].gold_value())
                         .sum();
-                    let mut card = match buy.index {
+                    let card = match buy.index {
                         BuyIndex::Shop(i) => &mut self.shop[i],
                         BuyIndex::Storage(i) => &mut self.storage[i],
                     };
@@ -241,46 +282,88 @@ impl GameState {
             PlayerAction::Move(mv) => {
                 let mut idx = self.curr_player().position;
                 let mut move_cost: [u8; 3] = [0, 0, 0];
+                let mut card_cost = 0;
+                let mut visited_cave = false;
                 for dir in &mv.path {
-                    let next_idx = self.nodes[idx].neighbors[*dir as usize];
-                    match self.nodes[next_idx].terrain {
-                        Terrain::Jungle => move_cost[0] += 1,
-                        Terrain::Desert => move_cost[1] += 1,
-                        Terrain::Water => move_cost[2] += 1,
+                    let mut next_idx = self.nodes[idx].neighbors[*dir as usize];
+                    let next_node = &self.nodes[next_idx];
+                    match next_node.terrain {
+                        Terrain::Jungle => move_cost[0] += next_node.cost,
+                        Terrain::Desert => move_cost[1] += next_node.cost,
+                        Terrain::Water => move_cost[2] += next_node.cost,
                         Terrain::Invalid => return Err("Invalid move".to_string()),
-                        Terrain::Cave => todo!(),
-                        Terrain::Swamp => todo!(),
-                        Terrain::Village => todo!(),
+                        Terrain::Cave => {
+                            visited_cave = true;
+                            next_idx = idx;
+                        }
+                        Terrain::Swamp => card_cost += next_node.cost,
+                        Terrain::Village => card_cost += next_node.cost,
                     }
                     idx = next_idx;
                 }
-                let mut player = &mut self.players[self.curr_player_idx];
-                // TODO: check move_cost against mv.card.movement before updating the player's position.
-                player.position = idx;
-                player.mark_played(&mv.cards);
-            }
-            PlayerAction::Discard(cards) => {
-                self.players[self.curr_player_idx].mark_played(&cards);
-            }
-            PlayerAction::FinishTurn => {
-                // Move all cards from 'played' pile to 'discard' pile.
-                let mut player = &mut self.players[self.curr_player_idx];
-                player.discard.append(&mut player.played);
-                // Refill the hand from the deck.
-                let mut deck = &mut player.deck;
-                let mut hand = &mut player.hand;
-                while hand.len() < HAND_SIZE {
-                    if deck.is_empty() && !player.discard.is_empty() {
-                        // Shuffle the discard pile into the deck.
-                        deck.append(&mut player.discard);
-                        deck.shuffle(&mut rand::thread_rng());
+
+                // Validate cave visit (doesn't update player position or cards).
+                if visited_cave {
+                    if mv.path.len() != 1 {
+                        return Err("Can only step once to visit a cave".to_string());
                     }
-                    if let Some(card) = deck.pop() {
-                        hand.push(card);
-                    } else {
-                        break;
+                    if !mv.cards.is_empty() {
+                        return Err("Cannot use cards to visit a cave".to_string());
+                    }
+                    todo!("Implement cave bonus");
+                    // return Ok(());
+                }
+                // Validate discarding / trashing cards.
+                if card_cost > 0 {
+                    if mv.path.len() != 1 {
+                        return Err("Only one step allowed".to_string());
+                    }
+                    if mv.cards.len() != card_cost as usize {
+                        return Err(format!(
+                            "Need {} cards to discard/trash, but got {}",
+                            card_cost,
+                            mv.cards.len()
+                        ));
+                    }
+                } else {
+                    // Validate normal movement.
+                    if mv.cards.len() != 1 {
+                        return Err("Must use a single card to move".to_string());
+                    }
+                    let total_cost: u8 = move_cost.iter().sum();
+                    let max_cost: u8 = *move_cost.iter().max().unwrap();
+                    if total_cost != max_cost {
+                        return Err("Path must contain a single movement type".to_string());
+                    }
+                    let card = &self.curr_player().hand[mv.cards[0]];
+                    for (i, move_type) in MOVE_TYPES.iter().enumerate() {
+                        if move_cost[i] > card.movement[i] {
+                            return Err(format!(
+                                "Need {} {} movement, but card only has {}",
+                                move_cost[i], move_type, card.movement[i]
+                            ));
+                        }
                     }
                 }
+
+                // Update the player's position and cards.
+                let player = &mut self.players[self.curr_player_idx];
+                player.position = idx;
+                if card_cost > 0 {
+                    if matches!(self.nodes[idx].terrain, Terrain::Village) {
+                        player.trash_cards(&mv.cards);
+                    } else {
+                        player.discard_cards(&mv.cards);
+                    }
+                } else {
+                    player.mark_played(&mv.cards);
+                }
+            }
+            PlayerAction::Discard(cards) => {
+                self.players[self.curr_player_idx].discard_cards(cards);
+            }
+            PlayerAction::FinishTurn => {
+                self.players[self.curr_player_idx].finish_turn(&mut rand::thread_rng());
             }
         }
         Ok(())

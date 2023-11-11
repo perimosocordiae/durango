@@ -43,7 +43,7 @@ pub struct Node {
     pub neighbors: [usize; 6],
 }
 impl Node {
-    pub fn print_dot(&self, idx: usize) -> () {
+    pub fn print_dot(&self, idx: usize) {
         if matches!(self.terrain, Terrain::Invalid) {
             return;
         }
