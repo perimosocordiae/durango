@@ -223,10 +223,13 @@ impl GameState {
     }
 
     fn handle_move(&mut self, mv: &MoveAction) -> Result<(), String> {
+        if mv.path.is_empty() {
+            return Err("Must move at least once".to_string());
+        }
         let mut idx = self.curr_player().position;
         let mut move_cost: [u8; 3] = [0, 0, 0];
         let mut card_cost = 0;
-        let mut visited_cave = false;
+        let mut visited_cave = 0;
         for dir in &mv.path {
             let mut next_idx = self.nodes[idx].neighbors[*dir as usize];
             let next_node = &self.nodes[next_idx];
@@ -236,7 +239,7 @@ impl GameState {
                 Terrain::Water => move_cost[2] += next_node.cost,
                 Terrain::Invalid => return Err("Invalid move".to_string()),
                 Terrain::Cave => {
-                    visited_cave = true;
+                    visited_cave = next_idx;
                     next_idx = idx;
                 }
                 Terrain::Swamp => card_cost += next_node.cost,
@@ -249,16 +252,31 @@ impl GameState {
         }
 
         // Validate cave visit (doesn't update player position or cards).
-        if visited_cave {
+        if visited_cave > 0 {
             if mv.path.len() != 1 {
-                return Err("Can only step once to visit a cave".to_string());
+                return Err("Can only visit adjacent caves".to_string());
             }
             if !mv.cards.is_empty() {
                 return Err("Cannot use cards to visit a cave".to_string());
             }
-            todo!("Implement cave bonus");
-            // return Ok(());
+            return self.give_bonus(visited_cave);
         }
+
+        if mv.cards.is_empty() {
+            return Err("Must use cards to move".to_string());
+        }
+        // Handle cards that provide a free move.
+        if matches!(
+            self.curr_player().hand[mv.cards[0]].action,
+            Some(CardAction::FreeMove)
+        ) {
+            if mv.path.len() != 1 {
+                return Err("Only one step allowed".to_string());
+            }
+            card_cost = 0;
+            move_cost = [0, 0, 0];
+        }
+
         // Validate discarding / trashing cards.
         if card_cost > 0 {
             if mv.path.len() != 1 {
@@ -301,6 +319,15 @@ impl GameState {
             player.mark_played(&mv.cards);
         }
         Ok(())
+    }
+
+    fn give_bonus(&mut self, idx: usize) -> Result<(), String> {
+        let cave = &self.nodes[idx];
+        if !matches!(cave.terrain, Terrain::Cave) {
+            return Err("Not a cave".to_string());
+        }
+        // TODO: check that we have enough bonuses in the cave.
+        todo!("Implement cave bonuses")
     }
 }
 
