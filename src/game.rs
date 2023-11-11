@@ -188,119 +188,125 @@ impl GameState {
     /// Process the specified `action` for the current player.
     pub fn process_action(&mut self, action: &PlayerAction) -> Result<(), String> {
         match action {
-            PlayerAction::BuyCard(buy) => {
-                {
-                    let bucks: u8 = buy
-                        .cards
-                        .iter()
-                        .map(|i| self.curr_player().deck[*i].gold_value())
-                        .sum();
-                    let card = match buy.index {
-                        BuyIndex::Shop(i) => &mut self.shop[i],
-                        BuyIndex::Storage(i) => &mut self.storage[i],
-                    };
-                    if card.quantity == 0 {
-                        return Err("Card is out of stock".to_string());
-                    }
-                    if bucks < card.cost {
-                        return Err(format!(
-                            "Not enough gold: have {}, need {}",
-                            bucks, card.cost
-                        ));
-                    }
-                    card.quantity -= 1;
-                }
-                self.players[self.curr_player_idx].mark_played(&buy.cards);
-            }
-            PlayerAction::Move(mv) => {
-                let mut idx = self.curr_player().position;
-                let mut move_cost: [u8; 3] = [0, 0, 0];
-                let mut card_cost = 0;
-                let mut visited_cave = false;
-                for dir in &mv.path {
-                    let mut next_idx = self.nodes[idx].neighbors[*dir as usize];
-                    let next_node = &self.nodes[next_idx];
-                    match next_node.terrain {
-                        Terrain::Jungle => move_cost[0] += next_node.cost,
-                        Terrain::Desert => move_cost[1] += next_node.cost,
-                        Terrain::Water => move_cost[2] += next_node.cost,
-                        Terrain::Invalid => return Err("Invalid move".to_string()),
-                        Terrain::Cave => {
-                            visited_cave = true;
-                            next_idx = idx;
-                        }
-                        Terrain::Swamp => card_cost += next_node.cost,
-                        Terrain::Village => card_cost += next_node.cost,
-                    }
-                    if self.is_occupied(next_idx) {
-                        return Err("Cannot move to occupied node".to_string());
-                    }
-                    idx = next_idx;
-                }
-
-                // Validate cave visit (doesn't update player position or cards).
-                if visited_cave {
-                    if mv.path.len() != 1 {
-                        return Err("Can only step once to visit a cave".to_string());
-                    }
-                    if !mv.cards.is_empty() {
-                        return Err("Cannot use cards to visit a cave".to_string());
-                    }
-                    todo!("Implement cave bonus");
-                    // return Ok(());
-                }
-                // Validate discarding / trashing cards.
-                if card_cost > 0 {
-                    if mv.path.len() != 1 {
-                        return Err("Only one step allowed".to_string());
-                    }
-                    if mv.cards.len() != card_cost as usize {
-                        return Err(format!(
-                            "Need {} cards to discard/trash, but got {}",
-                            card_cost,
-                            mv.cards.len()
-                        ));
-                    }
-                } else {
-                    // Validate normal movement.
-                    if mv.cards.len() != 1 {
-                        return Err("Must use a single card to move".to_string());
-                    }
-                    let total_cost: u8 = move_cost.iter().sum();
-                    let max_cost: u8 = *move_cost.iter().max().unwrap();
-                    if total_cost != max_cost {
-                        return Err("Path must contain a single movement type".to_string());
-                    }
-                    let card = &self.curr_player().hand[mv.cards[0]];
-                    for (i, move_type) in MOVE_TYPES.iter().enumerate() {
-                        if move_cost[i] > card.movement[i] {
-                            return Err(format!(
-                                "Need {} {} movement, but card only has {}",
-                                move_cost[i], move_type, card.movement[i]
-                            ));
-                        }
-                    }
-                }
-
-                // Update the player's position and cards.
-                let player = &mut self.players[self.curr_player_idx];
-                player.position = idx;
-                if card_cost > 0 {
-                    if matches!(self.nodes[idx].terrain, Terrain::Village) {
-                        player.trash_cards(&mv.cards);
-                    } else {
-                        player.discard_cards(&mv.cards);
-                    }
-                } else {
-                    player.mark_played(&mv.cards);
-                }
-            }
+            PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
+            PlayerAction::Move(mv) => self.handle_move(mv)?,
             PlayerAction::Discard(cards) => {
                 self.players[self.curr_player_idx].discard_cards(cards);
             }
             PlayerAction::FinishTurn => {
                 self.players[self.curr_player_idx].finish_turn(&mut rand::thread_rng());
             }
+        }
+        Ok(())
+    }
+
+    fn handle_buy(&mut self, buy: &BuyCardAction) -> Result<(), String> {
+        {
+            let bucks: u8 = buy
+                .cards
+                .iter()
+                .map(|i| self.curr_player().deck[*i].gold_value())
+                .sum();
+            let card = match buy.index {
+                BuyIndex::Shop(i) => &mut self.shop[i],
+                BuyIndex::Storage(i) => &mut self.storage[i],
+            };
+            if card.quantity == 0 {
+                return Err("Card is out of stock".to_string());
+            }
+            if bucks < card.cost {
+                return Err(format!(
+                    "Not enough gold: have {}, need {}",
+                    bucks, card.cost
+                ));
+            }
+            card.quantity -= 1;
+        }
+        self.players[self.curr_player_idx].mark_played(&buy.cards);
+        Ok(())
+    }
+
+    fn handle_move(&mut self, mv: &MoveAction) -> Result<(), String> {
+        let mut idx = self.curr_player().position;
+        let mut move_cost: [u8; 3] = [0, 0, 0];
+        let mut card_cost = 0;
+        let mut visited_cave = false;
+        for dir in &mv.path {
+            let mut next_idx = self.nodes[idx].neighbors[*dir as usize];
+            let next_node = &self.nodes[next_idx];
+            match next_node.terrain {
+                Terrain::Jungle => move_cost[0] += next_node.cost,
+                Terrain::Desert => move_cost[1] += next_node.cost,
+                Terrain::Water => move_cost[2] += next_node.cost,
+                Terrain::Invalid => return Err("Invalid move".to_string()),
+                Terrain::Cave => {
+                    visited_cave = true;
+                    next_idx = idx;
+                }
+                Terrain::Swamp => card_cost += next_node.cost,
+                Terrain::Village => card_cost += next_node.cost,
+            }
+            if self.is_occupied(next_idx) {
+                return Err("Cannot move to occupied node".to_string());
+            }
+            idx = next_idx;
+        }
+
+        // Validate cave visit (doesn't update player position or cards).
+        if visited_cave {
+            if mv.path.len() != 1 {
+                return Err("Can only step once to visit a cave".to_string());
+            }
+            if !mv.cards.is_empty() {
+                return Err("Cannot use cards to visit a cave".to_string());
+            }
+            todo!("Implement cave bonus");
+            // return Ok(());
+        }
+        // Validate discarding / trashing cards.
+        if card_cost > 0 {
+            if mv.path.len() != 1 {
+                return Err("Only one step allowed".to_string());
+            }
+            if mv.cards.len() != card_cost as usize {
+                return Err(format!(
+                    "Need {} cards to discard/trash, but got {}",
+                    card_cost,
+                    mv.cards.len()
+                ));
+            }
+        } else {
+            // Validate normal movement.
+            if mv.cards.len() != 1 {
+                return Err("Must use a single card to move".to_string());
+            }
+            let total_cost: u8 = move_cost.iter().sum();
+            let max_cost: u8 = *move_cost.iter().max().unwrap();
+            if total_cost != max_cost {
+                return Err("Path must contain a single movement type".to_string());
+            }
+            let card = &self.curr_player().hand[mv.cards[0]];
+            for (i, move_type) in MOVE_TYPES.iter().enumerate() {
+                if move_cost[i] > card.movement[i] {
+                    return Err(format!(
+                        "Need {} {} movement, but card only has {}",
+                        move_cost[i], move_type, card.movement[i]
+                    ));
+                }
+            }
+        }
+
+        // Update the player's position and cards.
+        let player = &mut self.players[self.curr_player_idx];
+        player.position = idx;
+        if card_cost > 0 {
+            if matches!(self.nodes[idx].terrain, Terrain::Village) {
+                player.trash_cards(&mv.cards);
+            } else {
+                player.discard_cards(&mv.cards);
+            }
+        } else {
+            player.mark_played(&mv.cards);
         }
         Ok(())
     }
