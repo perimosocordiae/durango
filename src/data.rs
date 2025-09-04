@@ -56,25 +56,28 @@ pub struct Node {
     pub neighbors: [usize; 6],
 }
 impl Node {
-    pub fn print_dot(&self, idx: usize) {
-        if matches!(self.terrain, Terrain::Invalid) {
-            return;
-        }
-        let fillcolor = match self.terrain {
+    pub fn color(&self) -> &'static str {
+        match self.terrain {
             Terrain::Jungle => "green",
             Terrain::Desert => "yellow",
             Terrain::Water => "blue",
             Terrain::Village => "red",
             Terrain::Swamp => "gray",
             _ => "white",
-        };
+        }
+    }
+    pub fn print_dot(&self, idx: usize) {
+        if matches!(self.terrain, Terrain::Invalid) {
+            return;
+        }
         println!(
-            "  N{} [label=\"{}: ({})\",fillcolor={}]",
-            idx, idx, self.cost, fillcolor
+            "  N{idx} [label=\"{idx}: ({})\",fillcolor={}]",
+            self.cost,
+            self.color()
         );
         for neighbor in self.neighbors.iter() {
             if *neighbor != 0 {
-                println!("  N{} -> N{}", idx, neighbor);
+                println!("  N{idx} -> N{neighbor}");
             }
         }
     }
