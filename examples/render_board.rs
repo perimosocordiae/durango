@@ -1,40 +1,72 @@
 use clap::Parser;
-use durango::data;
+use durango::data::{self, AxialCoord};
+use durango::data::{HexDirection, HexMap, LayoutInfo, Terrain};
 
 // Usage:
-// cargo run --example render_board -- -l 'A,0,4;A,5,1' | neato -Tsvg | display
-// cargo run --example render_board -- -l 'A,0,4;A,5,1' -f svg | display
+// cargo run --example render_board -- -f dot | neato -Tsvg | display
+// cargo run --example render_board -- -f svg | display
 
 #[derive(Parser)]
 struct Args {
-    #[clap(short, long, default_value = "B,0,3;B,0,3", value_delimiter = ';')]
+    #[clap(
+        short,
+        long,
+        default_value = "B,0,0,0;B,3,7,0",
+        value_delimiter = ';'
+    )]
     layout: Vec<String>,
     #[clap(short, long, default_value = "dot")]
     format: String,
 }
 
-fn dump_dot(nodes: &[data::Node]) {
+fn coord_to_string(coord: &AxialCoord) -> String {
+    format!("q{}r{}", coord.q + 1000, coord.r + 1000)
+}
+
+fn dump_dot(map: &HexMap) {
     println!("digraph {{");
     println!("  overlap=false;");
     println!("  node [style=filled];");
-    // Iterate over all nodes except the first one.
-    for (i, node) in nodes.iter().enumerate().skip(1) {
-        node.print_dot(i);
+    for (coord, node) in &map.nodes {
+        if matches!(node.terrain, Terrain::Invalid) {
+            continue;
+        }
+        println!(
+            "  {} [label=\"{},{}: {}\",fillcolor={}]",
+            coord_to_string(coord),
+            coord.q,
+            coord.r,
+            node.cost,
+            node.color()
+        );
+        for dir in HexDirection::all_directions() {
+            let next_pos = dir.neighbor_coord(*coord);
+            if let Some(neighbor) = map.nodes.get(&next_pos) {
+                if !matches!(neighbor.terrain, Terrain::Invalid) {
+                    println!(
+                        "  {} -> {}",
+                        coord_to_string(coord),
+                        coord_to_string(&next_pos)
+                    );
+                }
+            }
+        }
     }
     println!("}}");
 }
 
-fn axial_to_center(q: i32, r: i32, size: f32) -> (f32, f32) {
-    let x = size * (3.0_f32).sqrt() * (q as f32 + r as f32 / 2.0);
-    let y = size * 1.5 * r as f32;
+fn axial_to_center(pos: &AxialCoord, size: f32) -> (f32, f32) {
+    let x = size * (3.0_f32).sqrt() * (pos.q as f32 + pos.r as f32 / 2.0);
+    let y = size * 1.5 * pos.r as f32;
     (x, y)
 }
 
-fn axial_to_polygon(q: i32, r: i32, size: f32) -> String {
-    let (cx, cy) = axial_to_center(q, r, size);
+fn axial_to_polygon(pos: &AxialCoord, size: f32) -> String {
+    let (cx, cy) = axial_to_center(pos, size);
     let mut points = Vec::new();
     for i in 0..6 {
-        let angle = std::f32::consts::PI / 3.0 * i as f32 + std::f32::consts::PI / 6.0;
+        let angle =
+            std::f32::consts::PI / 3.0 * i as f32 + std::f32::consts::PI / 6.0;
         let x = cx + size * angle.cos();
         let y = cy + size * angle.sin();
         points.push(format!("{},{}", x, y));
@@ -42,24 +74,12 @@ fn axial_to_polygon(q: i32, r: i32, size: f32) -> String {
     points.join(" ")
 }
 
-fn axial_neighbor(q: i32, r: i32, direction: usize) -> (i32, i32) {
-    let directions = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)];
-    let (dq, dr) = directions[direction];
-    (q + dq, r + dr)
-}
-
-fn dump_svg(nodes: &[data::Node], size: f32) {
-    // DFS traversal from index 1.
-    let mut stack = vec![(1, (0, 0))]; // (index, coords)
-    let mut visited = vec![false; nodes.len()];
-    visited[0] = true; // Skip index 0.
-    visited[1] = true;
+fn dump_svg(map: &HexMap, size: f32) {
     let mut min_center = (f32::INFINITY, f32::INFINITY);
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
-    while let Some((i, (q, r))) = stack.pop() {
-        let node = &nodes[i];
-        let (cx, cy) = axial_to_center(q, r, size);
+    for (i, (coord, node)) in map.nodes.iter().enumerate() {
+        let (cx, cy) = axial_to_center(coord, size);
         if cx < min_center.0 {
             min_center.0 = cx;
         }
@@ -78,17 +98,11 @@ fn dump_svg(nodes: &[data::Node], size: f32) {
 <polygon points=\"{}\" fill=\"{}\" stroke=\"black\" stroke-width=\"2\" />
 <text x=\"{cx}\" y=\"{cy}\" font-size=\"{}\" dominant-baseline=\"middle\" text-anchor=\"middle\">{}</text>
 </g>",
-            axial_to_polygon(q, r, size),
+            axial_to_polygon(coord, size),
             node.color(),
             size / 2.0,
             node.cost
         ));
-        for (dir, &neighbor) in node.neighbors.iter().enumerate() {
-            if !visited[neighbor] {
-                stack.push((neighbor, axial_neighbor(q, r, dir)));
-                visited[neighbor] = true;
-            }
-        }
     }
 
     let margin = size * 1.1;
@@ -109,8 +123,8 @@ fn dump_svg(nodes: &[data::Node], size: f32) {
 
 fn main() {
     let args = Args::parse();
-    let layout_csv = format!("board,bottom,next_side\n{}", args.layout.join("\n"));
-    let layout = data::load_from_csv::<data::LayoutInfo>(&layout_csv).unwrap();
+    let layout_csv = format!("board,rotation,q,r\n{}", args.layout.join("\n"));
+    let layout = data::load_from_csv::<LayoutInfo>(&layout_csv).unwrap();
     let nodes = data::load_nodes(&layout);
     if args.format == "dot" {
         dump_dot(&nodes);

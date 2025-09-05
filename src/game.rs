@@ -1,5 +1,7 @@
 use crate::cards::{BuyableCard, Card, CardAction};
-use crate::data::{easy_1, load_nodes, HexDirection, Node, Terrain};
+use crate::data::{
+    easy_1, load_nodes, AxialCoord, HexDirection, HexMap, Terrain,
+};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +10,7 @@ const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
 
 #[derive(Serialize, Deserialize)]
 pub struct Player {
-    pub position: usize,
+    pub position: AxialCoord,
     deck: Vec<Card>,
     pub hand: Vec<Card>,
     played: Vec<Card>,
@@ -17,7 +19,7 @@ pub struct Player {
 
 #[derive(Serialize, Deserialize)]
 pub struct GameState {
-    pub nodes: Vec<Node>,
+    pub map: HexMap,
     players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
@@ -61,7 +63,7 @@ fn rev_sorted(xs: &[usize]) -> Vec<usize> {
 }
 
 impl Player {
-    fn new(position: usize, rng: &mut impl rand::Rng) -> Self {
+    fn new(position: AxialCoord, rng: &mut impl rand::Rng) -> Self {
         let mut deck = vec![
             Card::explorer(),
             Card::explorer(),
@@ -125,8 +127,10 @@ impl Player {
 impl GameState {
     pub fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
         Self {
-            nodes: load_nodes(&easy_1()),
-            players: (0..num_players).map(|i| Player::new(i, rng)).collect(),
+            map: load_nodes(&easy_1()),
+            players: (0..num_players)
+                .map(|i| Player::new(AxialCoord::new(i as i32, 0), rng))
+                .collect(),
             shop: vec![
                 // Scout
                 BuyableCard::regular(2, [2, 0, 0]),
@@ -177,15 +181,18 @@ impl GameState {
     }
 
     /// Is the specified node occupied by a player other than the current player?
-    pub fn is_occupied(&self, idx: usize) -> bool {
+    pub fn is_occupied(&self, pos: AxialCoord) -> bool {
         self.players
             .iter()
             .enumerate()
-            .any(|(i, p)| p.position == idx && i != self.curr_player_idx)
+            .any(|(i, p)| p.position == pos && i != self.curr_player_idx)
     }
 
     /// Process the specified `action` for the current player.
-    pub fn process_action(&mut self, action: &PlayerAction) -> Result<(), String> {
+    pub fn process_action(
+        &mut self,
+        action: &PlayerAction,
+    ) -> Result<(), String> {
         match action {
             PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
             PlayerAction::Move(mv) => self.handle_move(mv)?,
@@ -193,7 +200,8 @@ impl GameState {
                 self.players[self.curr_player_idx].mark_played(cards);
             }
             PlayerAction::FinishTurn => {
-                self.players[self.curr_player_idx].finish_turn(&mut rand::thread_rng());
+                self.players[self.curr_player_idx]
+                    .finish_turn(&mut rand::thread_rng());
             }
         }
         Ok(())
@@ -202,7 +210,8 @@ impl GameState {
     fn handle_buy(&mut self, buy: &BuyCardAction) -> Result<(), String> {
         {
             let deck = &self.curr_player().deck;
-            let bucks: u8 = buy.cards.iter().map(|i| deck[*i].gold_value()).sum();
+            let bucks: u8 =
+                buy.cards.iter().map(|i| deck[*i].gold_value()).sum();
             let card = match buy.index {
                 BuyIndex::Shop(i) => &mut self.shop[i],
                 BuyIndex::Storage(i) => &mut self.storage[i],
@@ -226,40 +235,40 @@ impl GameState {
         if mv.path.is_empty() {
             return Err("Must move at least once".to_string());
         }
-        let mut idx = self.curr_player().position;
+        let mut pos = self.curr_player().position;
         let mut move_cost: [u8; 3] = [0, 0, 0];
         let mut card_cost = 0;
-        let mut visited_cave = 0;
+        let mut visited_cave = None;
         for dir in &mv.path {
-            let mut next_idx = self.nodes[idx].neighbors[*dir as usize];
-            let next_node = &self.nodes[next_idx];
+            let mut next_pos = dir.neighbor_coord(self.map.nodes[&pos].coord);
+            let next_node = &self.map.nodes[&next_pos];
             match next_node.terrain {
                 Terrain::Jungle => move_cost[0] += next_node.cost,
                 Terrain::Desert => move_cost[1] += next_node.cost,
                 Terrain::Water => move_cost[2] += next_node.cost,
                 Terrain::Invalid => return Err("Invalid move".to_string()),
                 Terrain::Cave => {
-                    visited_cave = next_idx;
-                    next_idx = idx;
+                    visited_cave = Some(next_pos);
+                    next_pos = pos;
                 }
                 Terrain::Swamp => card_cost += next_node.cost,
                 Terrain::Village => card_cost += next_node.cost,
             }
-            if self.is_occupied(next_idx) {
+            if self.is_occupied(next_pos) {
                 return Err("Cannot move to occupied node".to_string());
             }
-            idx = next_idx;
+            pos = next_pos;
         }
 
         // Validate cave visit (doesn't update player position or cards).
-        if visited_cave > 0 {
+        if let Some(cave_pos) = visited_cave {
             if mv.path.len() != 1 {
                 return Err("Can only visit adjacent caves".to_string());
             }
             if !mv.cards.is_empty() {
                 return Err("Cannot use cards to visit a cave".to_string());
             }
-            return self.give_bonus(visited_cave);
+            return self.give_bonus(cave_pos);
         }
 
         if mv.cards.is_empty() {
@@ -297,7 +306,9 @@ impl GameState {
             let total_cost: u8 = move_cost.iter().sum();
             let max_cost: u8 = *move_cost.iter().max().unwrap();
             if total_cost != max_cost {
-                return Err("Path must contain a single movement type".to_string());
+                return Err(
+                    "Path must contain a single movement type".to_string()
+                );
             }
             let card = &self.curr_player().hand[mv.cards[0]];
             for (i, move_type) in MOVE_TYPES.iter().enumerate() {
@@ -312,8 +323,10 @@ impl GameState {
 
         // Update the player's position and cards.
         let player = &mut self.players[self.curr_player_idx];
-        player.position = idx;
-        if card_cost > 0 && matches!(self.nodes[idx].terrain, Terrain::Village) {
+        player.position = pos;
+        if card_cost > 0
+            && matches!(self.map.nodes[&pos].terrain, Terrain::Village)
+        {
             player.trash_cards(&mv.cards);
         } else {
             player.mark_played(&mv.cards);
@@ -321,8 +334,8 @@ impl GameState {
         Ok(())
     }
 
-    fn give_bonus(&mut self, idx: usize) -> Result<(), String> {
-        let cave = &self.nodes[idx];
+    fn give_bonus(&mut self, pos: AxialCoord) -> Result<(), String> {
+        let cave = &self.map.nodes[&pos];
         if !matches!(cave.terrain, Terrain::Cave) {
             return Err("Not a cave".to_string());
         }

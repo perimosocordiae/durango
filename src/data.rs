@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
@@ -14,7 +16,20 @@ pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
     Ok(out)
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(
+    Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, Hash,
+)]
+pub struct AxialCoord {
+    pub q: i32,
+    pub r: i32,
+}
+impl AxialCoord {
+    pub fn new(q: i32, r: i32) -> Self {
+        Self { q, r }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum HexDirection {
     NorthEast,
     East,
@@ -35,6 +50,40 @@ impl HexDirection {
             _ => panic!("Invalid index"),
         }
     }
+    pub fn reverse(&self) -> Self {
+        match self {
+            Self::NorthEast => Self::SouthWest,
+            Self::East => Self::West,
+            Self::SouthEast => Self::NorthWest,
+            Self::SouthWest => Self::NorthEast,
+            Self::West => Self::East,
+            Self::NorthWest => Self::SouthEast,
+        }
+    }
+    pub fn neighbor_coord(&self, coord: AxialCoord) -> AxialCoord {
+        let (dq, dr) = match self {
+            Self::East => (1, 0),
+            Self::West => (-1, 0),
+            Self::NorthEast => (1, -1),
+            Self::NorthWest => (0, -1),
+            Self::SouthEast => (0, 1),
+            Self::SouthWest => (-1, 1),
+        };
+        AxialCoord {
+            q: coord.q + dq,
+            r: coord.r + dr,
+        }
+    }
+    pub fn all_directions() -> [Self; 6] {
+        [
+            Self::NorthEast,
+            Self::East,
+            Self::SouthEast,
+            Self::SouthWest,
+            Self::West,
+            Self::NorthWest,
+        ]
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -52,8 +101,8 @@ pub enum Terrain {
 pub struct Node {
     pub terrain: Terrain,
     pub cost: u8,
-    // Indices of neighboring nodes, in HexDirection order.
-    pub neighbors: [usize; 6],
+    #[serde(flatten)]
+    pub coord: AxialCoord,
 }
 impl Node {
     pub fn color(&self) -> &'static str {
@@ -66,35 +115,21 @@ impl Node {
             _ => "white",
         }
     }
-    pub fn print_dot(&self, idx: usize) {
-        if matches!(self.terrain, Terrain::Invalid) {
-            return;
-        }
-        println!(
-            "  N{idx} [label=\"{idx}: ({})\",fillcolor={}]",
-            self.cost,
-            self.color()
-        );
-        for neighbor in self.neighbors.iter() {
-            if *neighbor != 0 {
-                println!("  N{idx} -> N{neighbor}");
-            }
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct LayoutInfo {
     board: char,
-    bottom: u8,
-    next_side: u8,
+    rotation: u8, // 0-5, clockwise from bottom
+    #[serde(flatten)]
+    center: AxialCoord,
 }
 impl LayoutInfo {
-    pub fn new(board: char, bottom: u8, next_side: u8) -> Self {
+    pub fn new(board: char, rotation: u8, q: i32, r: i32) -> Self {
         Self {
             board,
-            bottom,
-            next_side,
+            rotation,
+            center: AxialCoord { q, r },
         }
     }
 }
@@ -119,92 +154,41 @@ fn load_board(board: char) -> Vec<Node> {
     }
 }
 
-fn side_offsets(side: u8) -> [usize; 4] {
-    match side {
-        0 => [0, 1, 2, 3],     // Bottom
-        1 => [15, 9, 4, 0],    // Lower Left
-        2 => [33, 28, 22, 15], // Upper Left
-        3 => [33, 34, 35, 36], // Top
-        4 => [21, 27, 32, 36], // Upper Right
-        5 => [3, 8, 14, 21],   // Lower Right
-        _ => panic!("Invalid side"),
-    }
+#[derive(Serialize, Deserialize)]
+pub struct HexMap {
+    pub nodes: HashMap<AxialCoord, Node>,
 }
 
-fn side_connections(side: u8) -> (usize, usize) {
-    match side {
-        0 => (2, 3), // Bottom
-        1 => (3, 4), // Lower Left
-        2 => (4, 5), // Upper Left
-        3 => (0, 5), // Top
-        4 => (0, 1), // Upper Right
-        5 => (1, 2), // Lower Right
-        _ => panic!("Invalid side"),
-    }
-}
-
-pub fn load_nodes(layout: &[LayoutInfo]) -> Vec<Node> {
-    let mut result = vec![Node {
-        terrain: Terrain::Invalid,
-        cost: 0,
-        neighbors: [0; 6],
-    }];
-    let mut prev_start = 1;
-    for (i, info) in layout.iter().enumerate() {
-        let mut board_nodes = load_board(info.board);
-        // Update node indices.
-        let to_add = result.len() - 1;
-        for node in &mut board_nodes {
-            for neighbor in &mut node.neighbors {
-                if *neighbor != 0 {
-                    *neighbor += to_add;
-                }
+pub fn load_nodes(layout: &[LayoutInfo]) -> HexMap {
+    let mut nodes = HashMap::new();
+    for info in layout {
+        let board_nodes = load_board(info.board);
+        for mut node in board_nodes.into_iter() {
+            let coord = &mut node.coord;
+            // Rotate coord based on info.rotation
+            for _ in 0..info.rotation {
+                let q = coord.q;
+                let r = coord.r;
+                coord.q = -r;
+                coord.r = q + r;
             }
+            // Translate coord based on info.center
+            coord.q += info.center.q;
+            coord.r += info.center.r;
+            nodes.insert(*coord, node);
         }
-        if i > 0 && !board_nodes.is_empty() {
-            // Connect the boards.
-            let prev_side = layout[i - 1].next_side;
-            let curr_side = info.bottom;
-            // TODO: These result in flipped boards sometimes.
-            let prev_offsets = side_offsets(prev_side);
-            let curr_offsets = side_offsets(curr_side);
-            let curr_start = result.len();
-            let prev0 = prev_start + prev_offsets[0];
-            let prev1 = prev_start + prev_offsets[1];
-            let prev2 = prev_start + prev_offsets[2];
-            let prev3 = prev_start + prev_offsets[3];
-            let (n1, n2) = side_connections(curr_side);
-            board_nodes[curr_offsets[0]].neighbors[n1] = prev0;
-            board_nodes[curr_offsets[1]].neighbors[n1] = prev1;
-            board_nodes[curr_offsets[1]].neighbors[n2] = prev0;
-            board_nodes[curr_offsets[2]].neighbors[n1] = prev2;
-            board_nodes[curr_offsets[2]].neighbors[n2] = prev1;
-            board_nodes[curr_offsets[3]].neighbors[n1] = prev3;
-            board_nodes[curr_offsets[3]].neighbors[n2] = prev2;
-            let (n2, n1) = side_connections(prev_side);
-            result[prev0].neighbors[n1] = curr_start + curr_offsets[0];
-            result[prev0].neighbors[n2] = curr_start + curr_offsets[1];
-            result[prev1].neighbors[n1] = curr_start + curr_offsets[1];
-            result[prev1].neighbors[n2] = curr_start + curr_offsets[2];
-            result[prev2].neighbors[n1] = curr_start + curr_offsets[2];
-            result[prev2].neighbors[n2] = curr_start + curr_offsets[3];
-            result[prev3].neighbors[n1] = curr_start + curr_offsets[3];
-
-            prev_start = curr_start;
-        }
-        result.append(&mut board_nodes);
     }
-    result
+    HexMap { nodes }
 }
 
 pub fn easy_1() -> [LayoutInfo; 6] {
     [
-        LayoutInfo::new('B', 5, 2),
-        LayoutInfo::new('C', 0, 3),
-        LayoutInfo::new('G', 2, 1),
-        LayoutInfo::new('K', 1, 4),
-        LayoutInfo::new('J', 1, 3),
-        LayoutInfo::new('N', 0, 3),
+        LayoutInfo::new('B', 0, 0, 0),
+        LayoutInfo::new('C', 0, 0, 3),
+        LayoutInfo::new('G', 0, 2, 1),
+        LayoutInfo::new('K', 0, 1, 4),
+        LayoutInfo::new('J', 0, 1, 3),
+        LayoutInfo::new('N', 0, 0, 3),
     ]
 }
 
@@ -215,12 +199,15 @@ mod tests {
     #[test]
     fn single_board() {
         let nodes = load_board('A');
-        assert_eq!(nodes.len(), 37);
+        assert_eq!(nodes.len(), 36);
     }
 
     #[test]
     fn whole_layout() {
-        let nodes = load_nodes(&[LayoutInfo::new('A', 0, 3), LayoutInfo::new('A', 0, 3)]);
-        assert_eq!(nodes.len(), 1 + 37 + 37);
+        let map = load_nodes(&[
+            LayoutInfo::new('A', 0, 0, 0),
+            LayoutInfo::new('A', 0, 9, 9),
+        ]);
+        assert_eq!(map.nodes.len(), 36 + 36);
     }
 }
