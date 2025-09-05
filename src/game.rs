@@ -127,7 +127,7 @@ impl Player {
 impl GameState {
     pub fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
         Self {
-            map: load_nodes(&easy_1()),
+            map: load_nodes(&easy_1()).unwrap(),
             players: (0..num_players)
                 .map(|i| {
                     // TODO: better starting positions

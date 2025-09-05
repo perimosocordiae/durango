@@ -125,7 +125,7 @@ fn main() {
     let args = Args::parse();
     let layout_csv = format!("board,rotation,q,r\n{}", args.layout.join("\n"));
     let layout = data::load_from_csv::<LayoutInfo>(&layout_csv).unwrap();
-    let nodes = data::load_nodes(&layout);
+    let nodes = data::load_nodes(&layout).unwrap();
     if args.format == "dot" {
         dump_dot(&nodes);
     } else if args.format == "svg" {

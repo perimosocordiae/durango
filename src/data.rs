@@ -162,7 +162,9 @@ pub struct HexMap {
     pub nodes: HashMap<AxialCoord, Node>,
 }
 
-pub fn load_nodes(layout: &[LayoutInfo]) -> HexMap {
+pub fn load_nodes(
+    layout: &[LayoutInfo],
+) -> Result<HexMap, Box<dyn std::error::Error>> {
     let mut nodes = HashMap::new();
     for info in layout {
         let board_nodes = load_board(info.board).unwrap();
@@ -178,12 +180,21 @@ pub fn load_nodes(layout: &[LayoutInfo]) -> HexMap {
             // Translate coord based on info.center
             coord.q += info.center.q;
             coord.r += info.center.r;
-            nodes.insert(*coord, tmp.node);
+            // Insert into map, unless there's already something there
+            match nodes.entry(*coord) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(tmp.node);
+                }
+                std::collections::hash_map::Entry::Occupied(_) => {
+                    return Err("Overlapping boards".into());
+                }
+            }
         }
     }
-    HexMap { nodes }
+    Ok(HexMap { nodes })
 }
 
+// TODO: define layouts as CSV files
 pub fn easy_1() -> [LayoutInfo; 6] {
     [
         LayoutInfo::new('B', 0, 0, 0),
@@ -209,8 +220,9 @@ mod tests {
     fn whole_layout() {
         let map = load_nodes(&[
             LayoutInfo::new('A', 0, 0, 0),
-            LayoutInfo::new('A', 0, 9, 9),
-        ]);
+            LayoutInfo::new('A', 3, 7, 0),
+        ])
+        .unwrap();
         assert_eq!(map.nodes.len(), 36 + 36);
     }
 }
