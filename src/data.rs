@@ -105,7 +105,8 @@ impl Node {
             Terrain::Water => "blue",
             Terrain::Village => "red",
             Terrain::Swamp => "gray",
-            _ => "white",
+            Terrain::Cave => "brown",
+            Terrain::Invalid => "black",
         }
     }
 }
@@ -157,53 +158,59 @@ fn load_board(
     }
 }
 
+fn load_layout(
+    name: &str,
+) -> Result<Vec<LayoutInfo>, Box<dyn std::error::Error>> {
+    match name {
+        "easy1" => {
+            load_from_csv::<LayoutInfo>(include_str!("../layouts/easy1.csv"))
+        }
+        _ => Err("Unknown layout".into()),
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct HexMap {
     pub nodes: HashMap<AxialCoord, Node>,
 }
-
-pub fn load_nodes(
-    layout: &[LayoutInfo],
-) -> Result<HexMap, Box<dyn std::error::Error>> {
-    let mut nodes = HashMap::new();
-    for info in layout {
-        let board_nodes = load_board(info.board).unwrap();
-        for mut tmp in board_nodes.into_iter() {
-            let coord = &mut tmp.coord;
-            // Rotate coord based on info.rotation
-            for _ in 0..info.rotation {
-                let q = coord.q;
-                let r = coord.r;
-                coord.q = -r;
-                coord.r = q + r;
-            }
-            // Translate coord based on info.center
-            coord.q += info.center.q;
-            coord.r += info.center.r;
-            // Insert into map, unless there's already something there
-            match nodes.entry(*coord) {
-                std::collections::hash_map::Entry::Vacant(e) => {
-                    e.insert(tmp.node);
+impl HexMap {
+    pub fn create_custom(
+        layout: &[LayoutInfo],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut nodes = HashMap::new();
+        for info in layout {
+            let board_nodes = load_board(info.board)?;
+            for mut tmp in board_nodes.into_iter() {
+                let coord = &mut tmp.coord;
+                // Rotate coord based on info.rotation
+                for _ in 0..info.rotation {
+                    let q = coord.q;
+                    let r = coord.r;
+                    coord.q = -r;
+                    coord.r = q + r;
                 }
-                std::collections::hash_map::Entry::Occupied(_) => {
-                    return Err("Overlapping boards".into());
+                // Translate coord based on info.center
+                coord.q += info.center.q;
+                coord.r += info.center.r;
+                // Insert into map, unless there's already something there
+                match nodes.entry(*coord) {
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        e.insert(tmp.node);
+                    }
+                    std::collections::hash_map::Entry::Occupied(_) => {
+                        return Err("Overlapping boards".into());
+                    }
                 }
             }
         }
+        Ok(HexMap { nodes })
     }
-    Ok(HexMap { nodes })
-}
-
-// TODO: define layouts as CSV files
-pub fn easy_1() -> [LayoutInfo; 6] {
-    [
-        LayoutInfo::new('B', 0, 0, 0),
-        LayoutInfo::new('C', 0, 0, 3),
-        LayoutInfo::new('G', 0, 2, 1),
-        LayoutInfo::new('K', 0, 1, 4),
-        LayoutInfo::new('J', 0, 1, 3),
-        LayoutInfo::new('N', 0, 0, 3),
-    ]
+    pub fn create_named(
+        name: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let layout = load_layout(name)?;
+        Self::create_custom(&layout)
+    }
 }
 
 #[cfg(test)]
@@ -213,16 +220,16 @@ mod tests {
     #[test]
     fn single_board() {
         let nodes = load_board('A').unwrap();
-        assert_eq!(nodes.len(), 36);
+        assert_eq!(nodes.len(), 37);
     }
 
     #[test]
     fn whole_layout() {
-        let map = load_nodes(&[
-            LayoutInfo::new('A', 0, 0, 0),
-            LayoutInfo::new('A', 3, 7, 0),
+        let map = HexMap::create_custom(&[
+            LayoutInfo::new('B', 1, 0, 0),
+            LayoutInfo::new('C', 0, 3, -7),
         ])
         .unwrap();
-        assert_eq!(map.nodes.len(), 36 + 36);
+        assert_eq!(map.nodes.len(), 74);
     }
 }

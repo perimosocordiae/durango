@@ -1,7 +1,5 @@
 use crate::cards::{BuyableCard, Card, CardAction};
-use crate::data::{
-    easy_1, load_nodes, AxialCoord, HexDirection, HexMap, Terrain,
-};
+use crate::data::{AxialCoord, HexDirection, HexMap, Terrain};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -127,7 +125,7 @@ impl Player {
 impl GameState {
     pub fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
         Self {
-            map: load_nodes(&easy_1()).unwrap(),
+            map: HexMap::create_named("easy1").unwrap(),
             players: (0..num_players)
                 .map(|i| {
                     // TODO: better starting positions

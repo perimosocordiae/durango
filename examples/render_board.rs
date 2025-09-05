@@ -125,11 +125,11 @@ fn main() {
     let args = Args::parse();
     let layout_csv = format!("board,rotation,q,r\n{}", args.layout.join("\n"));
     let layout = data::load_from_csv::<LayoutInfo>(&layout_csv).unwrap();
-    let nodes = data::load_nodes(&layout).unwrap();
+    let map = HexMap::create_custom(&layout).unwrap();
     if args.format == "dot" {
-        dump_dot(&nodes);
+        dump_dot(&map);
     } else if args.format == "svg" {
-        dump_svg(&nodes, 40.0);
+        dump_svg(&map, 30.0);
     } else {
         eprintln!("Unsupported format: {}", args.format);
     }
