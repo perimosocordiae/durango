@@ -23,11 +23,6 @@ pub struct AxialCoord {
     pub q: i32,
     pub r: i32,
 }
-impl AxialCoord {
-    pub fn new(q: i32, r: i32) -> Self {
-        Self { q, r }
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum HexDirection {
@@ -101,8 +96,6 @@ pub enum Terrain {
 pub struct Node {
     pub terrain: Terrain,
     pub cost: u8,
-    #[serde(flatten)]
-    pub coord: AxialCoord,
 }
 impl Node {
     pub fn color(&self) -> &'static str {
@@ -115,6 +108,14 @@ impl Node {
             _ => "white",
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct SavedNode {
+    #[serde(flatten)]
+    node: Node,
+    #[serde(flatten)]
+    coord: AxialCoord,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -134,23 +135,25 @@ impl LayoutInfo {
     }
 }
 
-fn load_board(board: char) -> Vec<Node> {
+fn load_board(
+    board: char,
+) -> Result<Vec<SavedNode>, Box<dyn std::error::Error>> {
     match board {
-        'A' => load_from_csv::<Node>(include_str!("../boards/A.csv")).unwrap(),
-        'B' => load_from_csv::<Node>(include_str!("../boards/B.csv")).unwrap(),
-        'C' => load_from_csv::<Node>(include_str!("../boards/C.csv")).unwrap(),
-        'D' => load_from_csv::<Node>(include_str!("../boards/D.csv")).unwrap(),
-        'E' => load_from_csv::<Node>(include_str!("../boards/E.csv")).unwrap(),
-        'F' => load_from_csv::<Node>(include_str!("../boards/F.csv")).unwrap(),
-        'G' => load_from_csv::<Node>(include_str!("../boards/G.csv")).unwrap(),
-        'H' => load_from_csv::<Node>(include_str!("../boards/H.csv")).unwrap(),
-        'I' => load_from_csv::<Node>(include_str!("../boards/I.csv")).unwrap(),
-        'J' => load_from_csv::<Node>(include_str!("../boards/J.csv")).unwrap(),
-        'K' => load_from_csv::<Node>(include_str!("../boards/K.csv")).unwrap(),
-        'L' => load_from_csv::<Node>(include_str!("../boards/L.csv")).unwrap(),
-        'M' => load_from_csv::<Node>(include_str!("../boards/M.csv")).unwrap(),
-        'N' => load_from_csv::<Node>(include_str!("../boards/N.csv")).unwrap(),
-        _ => panic!("Invalid board"),
+        'A' => load_from_csv::<SavedNode>(include_str!("../boards/A.csv")),
+        'B' => load_from_csv::<SavedNode>(include_str!("../boards/B.csv")),
+        'C' => load_from_csv::<SavedNode>(include_str!("../boards/C.csv")),
+        'D' => load_from_csv::<SavedNode>(include_str!("../boards/D.csv")),
+        'E' => load_from_csv::<SavedNode>(include_str!("../boards/E.csv")),
+        'F' => load_from_csv::<SavedNode>(include_str!("../boards/F.csv")),
+        'G' => load_from_csv::<SavedNode>(include_str!("../boards/G.csv")),
+        'H' => load_from_csv::<SavedNode>(include_str!("../boards/H.csv")),
+        'I' => load_from_csv::<SavedNode>(include_str!("../boards/I.csv")),
+        'J' => load_from_csv::<SavedNode>(include_str!("../boards/J.csv")),
+        'K' => load_from_csv::<SavedNode>(include_str!("../boards/K.csv")),
+        'L' => load_from_csv::<SavedNode>(include_str!("../boards/L.csv")),
+        'M' => load_from_csv::<SavedNode>(include_str!("../boards/M.csv")),
+        'N' => load_from_csv::<SavedNode>(include_str!("../boards/N.csv")),
+        _ => Err("Invalid board".into()),
     }
 }
 
@@ -162,9 +165,9 @@ pub struct HexMap {
 pub fn load_nodes(layout: &[LayoutInfo]) -> HexMap {
     let mut nodes = HashMap::new();
     for info in layout {
-        let board_nodes = load_board(info.board);
-        for mut node in board_nodes.into_iter() {
-            let coord = &mut node.coord;
+        let board_nodes = load_board(info.board).unwrap();
+        for mut tmp in board_nodes.into_iter() {
+            let coord = &mut tmp.coord;
             // Rotate coord based on info.rotation
             for _ in 0..info.rotation {
                 let q = coord.q;
@@ -175,7 +178,7 @@ pub fn load_nodes(layout: &[LayoutInfo]) -> HexMap {
             // Translate coord based on info.center
             coord.q += info.center.q;
             coord.r += info.center.r;
-            nodes.insert(*coord, node);
+            nodes.insert(*coord, tmp.node);
         }
     }
     HexMap { nodes }
@@ -198,7 +201,7 @@ mod tests {
 
     #[test]
     fn single_board() {
-        let nodes = load_board('A');
+        let nodes = load_board('A').unwrap();
         assert_eq!(nodes.len(), 36);
     }
 

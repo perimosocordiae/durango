@@ -17,9 +17,8 @@ pub fn create_agent(difficulty: usize) -> Box<dyn Agent + Send> {
 fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     let mut valid_moves = Vec::new();
     let me = game.curr_player();
-    let my_node = &game.map.nodes[&me.position];
     for dir in HexDirection::all_directions() {
-        let neighbor_pos = dir.neighbor_coord(my_node.coord);
+        let neighbor_pos = dir.neighbor_coord(me.position);
         if let Some(node) = game.map.nodes.get(&neighbor_pos) {
             match node.terrain {
                 Terrain::Invalid => continue,

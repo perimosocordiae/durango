@@ -129,7 +129,11 @@ impl GameState {
         Self {
             map: load_nodes(&easy_1()),
             players: (0..num_players)
-                .map(|i| Player::new(AxialCoord::new(i as i32, 0), rng))
+                .map(|i| {
+                    // TODO: better starting positions
+                    let start_pos = AxialCoord { q: i as i32, r: 0 };
+                    Player::new(start_pos, rng)
+                })
                 .collect(),
             shop: vec![
                 // Scout
@@ -240,7 +244,7 @@ impl GameState {
         let mut card_cost = 0;
         let mut visited_cave = None;
         for dir in &mv.path {
-            let mut next_pos = dir.neighbor_coord(self.map.nodes[&pos].coord);
+            let mut next_pos = dir.neighbor_coord(pos);
             let next_node = &self.map.nodes[&next_pos];
             match next_node.terrain {
                 Terrain::Jungle => move_cost[0] += next_node.cost,
