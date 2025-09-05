@@ -74,14 +74,14 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
 struct RandomAgent {}
 impl Agent for RandomAgent {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let me = game.curr_player();
         if me.hand.is_empty() {
             return PlayerAction::FinishTurn;
         }
         let mut valid_moves = valid_move_actions(game);
         if !valid_moves.is_empty() {
-            let idx = rng.gen_range(0..valid_moves.len());
+            let idx = rng.random_range(0..valid_moves.len());
             return PlayerAction::Move(valid_moves.swap_remove(idx));
         }
         // TODO: buy cards

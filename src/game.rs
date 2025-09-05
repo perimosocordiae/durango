@@ -201,7 +201,7 @@ impl GameState {
             }
             PlayerAction::FinishTurn => {
                 self.players[self.curr_player_idx]
-                    .finish_turn(&mut rand::thread_rng());
+                    .finish_turn(&mut rand::rng());
             }
         }
         Ok(())
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn initialization() {
-        let game = GameState::new(4, &mut rand::thread_rng());
+        let game = GameState::new(4, &mut rand::rng());
         assert_eq!(game.players.len(), 4);
         assert_eq!(game.shop.len(), 6);
         assert_eq!(game.storage.len(), 12);
