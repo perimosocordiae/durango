@@ -1,5 +1,7 @@
 use crate::data::{HexDirection, Terrain};
-use crate::game::{GameState, MoveAction, PlayerAction};
+use crate::game::{
+    BuyCardAction, BuyIndex, GameState, MoveAction, PlayerAction,
+};
 use rand::Rng;
 
 pub trait Agent {
@@ -20,6 +22,9 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     for dir in HexDirection::all_directions() {
         let neighbor_pos = dir.neighbor_coord(me.position);
         if let Some(node) = game.map.nodes.get(&neighbor_pos) {
+            if game.is_occupied(neighbor_pos) {
+                continue;
+            }
             match node.terrain {
                 Terrain::Invalid => continue,
                 // Avoid caves for now because they're not implemented yet.
@@ -69,6 +74,20 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     valid_moves
 }
 
+fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
+    let hand = &game.curr_player().hand;
+    let cash = hand.iter().map(|c| c.gold_value()).sum();
+    game.shop
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.cost <= cash)
+        .map(|(i, _)| BuyCardAction {
+            cards: (0..hand.len()).collect(),
+            index: BuyIndex::Shop(i),
+        })
+        .collect()
+}
+
 #[derive(Default)]
 struct RandomAgent {}
 impl Agent for RandomAgent {
@@ -83,7 +102,11 @@ impl Agent for RandomAgent {
             let idx = rng.random_range(0..valid_moves.len());
             return PlayerAction::Move(valid_moves.swap_remove(idx));
         }
-        // TODO: buy cards
+        let mut valid_buys = valid_buy_actions(game);
+        if !valid_buys.is_empty() {
+            let idx = rng.random_range(0..valid_buys.len());
+            return PlayerAction::BuyCard(valid_buys.swap_remove(idx));
+        }
         PlayerAction::Discard((0..me.hand.len()).collect())
     }
 }
