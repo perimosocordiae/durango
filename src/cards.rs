@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum CardAction {
     FreeBuy,
     FreeMove,
@@ -79,6 +79,26 @@ impl Card {
             single_use: false,
             action: None,
         }
+    }
+}
+impl std::fmt::Debug for Card {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.movement[0] > 0 {
+            write!(f, "J{}", self.movement[0])?;
+        }
+        if self.movement[1] > 0 {
+            write!(f, "D{}", self.movement[1])?;
+        }
+        if self.movement[2] > 0 {
+            write!(f, "J{}", self.movement[2])?
+        }
+        if self.single_use {
+            f.write_str(" (1x)")?;
+        }
+        if let Some(a) = &self.action {
+            write!(f, " {:?}", a)?;
+        }
+        Ok(())
     }
 }
 

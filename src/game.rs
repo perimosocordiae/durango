@@ -21,28 +21,28 @@ pub struct GameState {
     players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
-    curr_player_idx: usize,
+    pub curr_player_idx: usize,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum BuyIndex {
     Shop(usize),
     Storage(usize),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BuyCardAction {
     pub cards: Vec<usize>,
     pub index: BuyIndex,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MoveAction {
     pub cards: Vec<usize>,
     pub path: Vec<HexDirection>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum PlayerAction {
     BuyCard(BuyCardAction),
     Move(MoveAction),
@@ -204,6 +204,8 @@ impl GameState {
             PlayerAction::FinishTurn => {
                 self.players[self.curr_player_idx]
                     .finish_turn(&mut rand::rng());
+                self.curr_player_idx += 1;
+                self.curr_player_idx %= self.players.len();
             }
         }
         Ok(())
