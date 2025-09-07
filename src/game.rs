@@ -213,9 +213,9 @@ impl GameState {
 
     fn handle_buy(&mut self, buy: &BuyCardAction) -> Result<(), String> {
         {
-            let deck = &self.curr_player().deck;
+            let hand = &self.curr_player().hand;
             let bucks: u8 =
-                buy.cards.iter().map(|i| deck[*i].gold_value()).sum();
+                buy.cards.iter().map(|i| hand[*i].gold_value()).sum();
             let card = match buy.index {
                 BuyIndex::Shop(i) => &mut self.shop[i],
                 BuyIndex::Storage(i) => &mut self.storage[i],
