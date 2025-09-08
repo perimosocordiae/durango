@@ -6,13 +6,19 @@ use durango::game;
 struct Args {
     #[clap(short, long, default_value_t = 2)]
     players: usize,
+    #[clap(long, default_value = "easy1")]
+    preset: String,
     #[clap(short, long, default_value_t = 100)]
     actions: usize,
 }
 
 fn main() {
     let args = Args::parse();
-    let mut g = match game::GameState::new(args.players, &mut rand::rng()) {
+    let mut g = match game::GameState::new(
+        args.players,
+        &args.preset,
+        &mut rand::rng(),
+    ) {
         Ok(game) => game,
         Err(e) => {
             eprintln!("Error creating game state: {}", e);

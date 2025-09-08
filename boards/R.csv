@@ -1,0 +1,17 @@
+cost,terrain,q,r
+1,Jungle,-3,1
+1,Jungle,-2,1
+99,Invalid,-1,1
+1,Desert,0,1
+1,Desert,1,1
+1,Jungle,-3,0
+3,Jungle,-2,0
+99,Invalid,-1,0
+1,Desert,0,0
+1,Village,1,0
+1,Desert,2,0
+1,Jungle,-2,-1
+1,Jungle,-1,-1
+99,Invalid,0,-1
+1,Desert,1,-1
+1,Desert,2,-1

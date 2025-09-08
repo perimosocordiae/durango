@@ -145,12 +145,13 @@ impl Player {
 impl GameState {
     pub fn new(
         num_players: usize,
+        preset: &str,
         rng: &mut impl rand::Rng,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if num_players < 2 || num_players > 4 {
             return Err("Invalid number of players".into());
         }
-        let map = HexMap::create_named("easy1")?;
+        let map = HexMap::create_named(preset)?;
         let players = (0..num_players)
             .map(|i| {
                 // TODO: better starting positions
@@ -421,7 +422,7 @@ mod tests {
 
     #[test]
     fn initialization() {
-        let game = GameState::new(4, &mut rand::rng()).unwrap();
+        let game = GameState::new(4, "easy1", &mut rand::rng()).unwrap();
         assert_eq!(game.players.len(), 4);
         assert_eq!(game.shop.len(), 6);
         assert_eq!(game.storage.len(), 12);

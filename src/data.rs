@@ -154,6 +154,10 @@ fn load_board(
         'L' => load_from_csv::<SavedNode>(include_str!("../boards/L.csv")),
         'M' => load_from_csv::<SavedNode>(include_str!("../boards/M.csv")),
         'N' => load_from_csv::<SavedNode>(include_str!("../boards/N.csv")),
+        'O' => load_from_csv::<SavedNode>(include_str!("../boards/O.csv")),
+        'P' => load_from_csv::<SavedNode>(include_str!("../boards/P.csv")),
+        'Q' => load_from_csv::<SavedNode>(include_str!("../boards/Q.csv")),
+        'R' => load_from_csv::<SavedNode>(include_str!("../boards/R.csv")),
         'Y' => load_from_csv::<SavedNode>(include_str!("../boards/Y.csv")),
         'Z' => load_from_csv::<SavedNode>(include_str!("../boards/Z.csv")),
         _ => Err(format!("Invalid board: {}", board).into()),
@@ -166,6 +170,9 @@ fn load_layout(
     match name {
         "easy1" => {
             load_from_csv::<LayoutInfo>(include_str!("../layouts/easy1.csv"))
+        }
+        "easy2" => {
+            load_from_csv::<LayoutInfo>(include_str!("../layouts/easy2.csv"))
         }
         _ => Err("Unknown layout".into()),
     }
