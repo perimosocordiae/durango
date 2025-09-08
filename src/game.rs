@@ -120,6 +120,17 @@ impl Player {
             }
         }
     }
+
+    pub fn debug_str(&self, idx: usize) -> String {
+        format!(
+            "P{idx} @{},{}: hand={:?}, deck={}, discard={}",
+            self.position.q,
+            self.position.r,
+            &self.hand,
+            self.deck.len(),
+            self.discard.len()
+        )
+    }
 }
 
 impl GameState {
@@ -198,11 +209,22 @@ impl GameState {
             .any(|(i, p)| p.position == pos && i != self.curr_player_idx)
     }
 
-    /// Process the specified `action` for the current player.
+    /// Which players (if any) are on a finish hex?
+    pub fn players_at_finish(&self) -> Vec<usize> {
+        self.players
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| self.map.finish.contains(&p.position))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Process the specified `action` for the current player. Returns true if
+    /// the game is over.
     pub fn process_action(
         &mut self,
         action: &PlayerAction,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         match action {
             PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
             PlayerAction::Move(mv) => self.handle_move(mv)?,
@@ -214,9 +236,12 @@ impl GameState {
                     .finish_turn(&mut rand::rng());
                 self.curr_player_idx += 1;
                 self.curr_player_idx %= self.players.len();
+                if self.curr_player_idx == 0 {
+                    return Ok(!self.players_at_finish().is_empty());
+                }
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     pub fn has_open_shop(&self) -> bool {

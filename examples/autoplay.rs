@@ -23,11 +23,15 @@ fn main() {
         .map(|_| agent::create_agent(0))
         .collect::<Vec<_>>();
     for _ in 0..args.actions {
-        println!("P{} hand: {:?}", g.curr_player_idx, g.curr_player().hand);
+        println!("{}", g.curr_player().debug_str(g.curr_player_idx));
         let act = ais[g.curr_player_idx].choose_action(&g);
         println!(" action: {:?}", &act);
         match g.process_action(&act) {
-            Ok(()) => {}
+            Ok(true) => {
+                println!("Game over! Winners: {:?}", g.players_at_finish());
+                break;
+            }
+            Ok(false) => {}
             Err(e) => {
                 println!("Error processing action: {}", e);
                 break;

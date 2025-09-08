@@ -172,13 +172,19 @@ fn load_layout(
 #[derive(Serialize, Deserialize)]
 pub struct HexMap {
     pub nodes: HashMap<AxialCoord, Node>,
+    pub finish: Vec<AxialCoord>,
 }
 impl HexMap {
     pub fn create_custom(
         layout: &[LayoutInfo],
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        if layout.is_empty() {
+            return Err("Cannot create map with an empty layout".into());
+        }
+        let last_board = layout.len() - 1;
         let mut nodes = HashMap::new();
-        for info in layout {
+        let mut finish = Vec::new();
+        for (i, info) in layout.iter().enumerate() {
             let board_nodes = load_board(info.board)?;
             for mut tmp in board_nodes.into_iter() {
                 let coord = &mut tmp.coord;
@@ -201,9 +207,12 @@ impl HexMap {
                         return Err("Overlapping boards".into());
                     }
                 }
+                if i == last_board {
+                    finish.push(*coord);
+                }
             }
         }
-        Ok(HexMap { nodes })
+        Ok(HexMap { nodes, finish })
     }
     pub fn create_named(
         name: &str,
