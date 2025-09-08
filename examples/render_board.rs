@@ -15,6 +15,8 @@ struct Args {
         value_delimiter = ';'
     )]
     layout: Vec<String>,
+    #[clap(short, long)]
+    preset: Option<String>,
     #[clap(short, long, default_value = "dot")]
     format: String,
 }
@@ -121,16 +123,32 @@ fn dump_svg(map: &HexMap, size: f32) {
     println!("</svg>");
 }
 
-fn main() {
-    let args = Args::parse();
-    let layout_csv = format!("board,rotation,q,r\n{}", args.layout.join("\n"));
-    let layout = data::load_from_csv::<LayoutInfo>(&layout_csv).unwrap();
-    let map = HexMap::create_custom(&layout).unwrap();
+fn render(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+    let map = match &args.preset {
+        Some(name) => HexMap::create_named(&name),
+        None => {
+            let layout_csv =
+                format!("board,rotation,q,r\n{}", args.layout.join("\n"));
+            let layout = data::load_from_csv::<LayoutInfo>(&layout_csv)?;
+            HexMap::create_custom(&layout)
+        }
+    }?;
     if args.format == "dot" {
         dump_dot(&map);
     } else if args.format == "svg" {
         dump_svg(&map, 30.0);
     } else {
         eprintln!("Unsupported format: {}", args.format);
+    }
+    Ok(())
+}
+
+fn main() {
+    let args = Args::parse();
+    match render(&args) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("{}", e);
+        }
     }
 }
