@@ -211,25 +211,46 @@ impl GameState {
         Ok(())
     }
 
+    pub fn has_open_shop(&self) -> bool {
+        self.shop.len() < 6
+    }
+
+    fn buyable_card(&self, idx: &BuyIndex) -> &BuyableCard {
+        match idx {
+            BuyIndex::Shop(i) => &self.shop[*i],
+            BuyIndex::Storage(i) => &self.storage[*i],
+        }
+    }
+
     fn handle_buy(&mut self, buy: &BuyCardAction) -> Result<(), String> {
-        {
-            let hand = &self.curr_player().hand;
-            let bucks: u8 =
-                buy.cards.iter().map(|i| hand[*i].gold_value()).sum();
-            let card = match buy.index {
-                BuyIndex::Shop(i) => &mut self.shop[i],
-                BuyIndex::Storage(i) => &mut self.storage[i],
-            };
-            if card.quantity == 0 {
-                return Err("Card is out of stock".to_string());
+        let card = self.buyable_card(&buy.index);
+        if card.quantity == 0 {
+            return Err("Card is out of stock".into());
+        }
+        let hand = &self.curr_player().hand;
+        let bucks: u8 = buy.cards.iter().map(|i| hand[*i].gold_value()).sum();
+        if bucks < card.cost {
+            return Err(format!(
+                "Not enough gold: have {}, need {}",
+                bucks, card.cost
+            ));
+        }
+        let shop_idx = match buy.index {
+            BuyIndex::Shop(i) => i,
+            BuyIndex::Storage(i) => {
+                if !self.has_open_shop() {
+                    return Err(
+                        "Cannot buy from storage while shop is full".into()
+                    );
+                }
+                self.shop.push(self.storage.swap_remove(i));
+                self.shop.len() - 1
             }
-            if bucks < card.cost {
-                return Err(format!(
-                    "Not enough gold: have {}, need {}",
-                    bucks, card.cost
-                ));
-            }
-            card.quantity -= 1;
+        };
+        let qty = &mut self.shop[shop_idx].quantity;
+        *qty -= 1;
+        if *qty == 0 {
+            self.shop.swap_remove(shop_idx);
         }
         self.players[self.curr_player_idx].mark_played(&buy.cards);
         Ok(())
