@@ -123,16 +123,24 @@ impl Player {
 }
 
 impl GameState {
-    pub fn new(num_players: usize, rng: &mut impl rand::Rng) -> Self {
-        Self {
-            map: HexMap::create_named("easy1").unwrap(),
-            players: (0..num_players)
-                .map(|i| {
-                    // TODO: better starting positions
-                    let start_pos = AxialCoord { q: i as i32, r: 0 };
-                    Player::new(start_pos, rng)
-                })
-                .collect(),
+    pub fn new(
+        num_players: usize,
+        rng: &mut impl rand::Rng,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        if num_players < 2 || num_players > 4 {
+            return Err("Invalid number of players".into());
+        }
+        let map = HexMap::create_named("easy1")?;
+        let players = (0..num_players)
+            .map(|i| {
+                // TODO: better starting positions
+                let start_pos = AxialCoord { q: i as i32, r: 0 };
+                Player::new(start_pos, rng)
+            })
+            .collect();
+        Ok(Self {
+            map,
+            players,
             shop: vec![
                 // Scout
                 BuyableCard::regular(2, [2, 0, 0]),
@@ -174,7 +182,7 @@ impl GameState {
                 BuyableCard::action(10, CardAction::FreeMove, false),
             ],
             curr_player_idx: 0,
-        }
+        })
     }
 
     /// The player whose turn it is.
@@ -379,7 +387,7 @@ mod tests {
 
     #[test]
     fn initialization() {
-        let game = GameState::new(4, &mut rand::rng());
+        let game = GameState::new(4, &mut rand::rng()).unwrap();
         assert_eq!(game.players.len(), 4);
         assert_eq!(game.shop.len(), 6);
         assert_eq!(game.storage.len(), 12);
