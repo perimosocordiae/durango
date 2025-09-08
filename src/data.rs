@@ -154,7 +154,9 @@ fn load_board(
         'L' => load_from_csv::<SavedNode>(include_str!("../boards/L.csv")),
         'M' => load_from_csv::<SavedNode>(include_str!("../boards/M.csv")),
         'N' => load_from_csv::<SavedNode>(include_str!("../boards/N.csv")),
-        _ => Err("Invalid board".into()),
+        'Y' => load_from_csv::<SavedNode>(include_str!("../boards/Y.csv")),
+        'Z' => load_from_csv::<SavedNode>(include_str!("../boards/Z.csv")),
+        _ => Err(format!("Invalid board: {}", board).into()),
     }
 }
 
