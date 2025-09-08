@@ -77,7 +77,8 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
 fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
     let hand = &game.curr_player().hand;
     let cash = hand.iter().map(|c| c.gold_value()).sum();
-    game.shop
+    let mut buys: Vec<BuyCardAction> = game
+        .shop
         .iter()
         .enumerate()
         .filter(|(_, c)| c.cost <= cash)
@@ -85,7 +86,20 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
             cards: (0..hand.len()).collect(),
             index: BuyIndex::Shop(i),
         })
-        .collect()
+        .collect();
+    if game.has_open_shop() {
+        buys.extend(
+            game.storage
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.cost <= cash)
+                .map(|(i, _)| BuyCardAction {
+                    cards: (0..hand.len()).collect(),
+                    index: BuyIndex::Storage(i),
+                }),
+        );
+    }
+    buys
 }
 
 #[derive(Default)]
