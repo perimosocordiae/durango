@@ -1,4 +1,4 @@
-use crate::data::{HexDirection, Terrain};
+use crate::data::Terrain;
 use crate::game::{
     BuyCardAction, BuyIndex, GameState, MoveAction, PlayerAction,
 };
@@ -19,64 +19,60 @@ pub fn create_agent(difficulty: usize) -> Box<dyn Agent + Send> {
 fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     let mut valid_moves = Vec::new();
     let me = game.curr_player();
-    for dir in HexDirection::all_directions() {
-        let neighbor_pos = dir.neighbor_coord(me.position);
-        if let Some(node) = game.map.nodes.get(&neighbor_pos) {
-            if game.is_occupied(neighbor_pos) {
-                continue;
+    for (dir, pos, node) in game.map.neighbors_of(me.position) {
+        if game.is_occupied(pos) {
+            continue;
+        }
+        match node.terrain {
+            Terrain::Invalid => continue,
+            // Avoid caves for now because they're not implemented yet.
+            Terrain::Cave => continue,
+            Terrain::Jungle => {
+                for (i, card) in me.hand.iter().enumerate() {
+                    if card.movement[0] >= node.cost {
+                        valid_moves.push(MoveAction {
+                            cards: vec![i],
+                            path: vec![dir],
+                        });
+                    }
+                }
             }
-            match node.terrain {
-                Terrain::Invalid => continue,
-                // Avoid caves for now because they're not implemented yet.
-                Terrain::Cave => continue,
-                Terrain::Jungle => {
-                    for (i, card) in me.hand.iter().enumerate() {
-                        if card.movement[0] >= node.cost {
-                            valid_moves.push(MoveAction {
-                                cards: vec![i],
-                                path: vec![dir],
-                            });
-                        }
-                    }
-                }
-                Terrain::Desert => {
-                    for (i, card) in me.hand.iter().enumerate() {
-                        if card.movement[1] >= node.cost {
-                            valid_moves.push(MoveAction {
-                                cards: vec![i],
-                                path: vec![dir],
-                            });
-                        }
-                    }
-                }
-                Terrain::Water => {
-                    for (i, card) in me.hand.iter().enumerate() {
-                        if card.movement[2] >= node.cost {
-                            valid_moves.push(MoveAction {
-                                cards: vec![i],
-                                path: vec![dir],
-                            });
-                        }
-                    }
-                }
-                Terrain::Swamp => {
-                    // TODO: generate all length-cost combinations of cards.
-                    if me.hand.len() >= node.cost as usize {
+            Terrain::Desert => {
+                for (i, card) in me.hand.iter().enumerate() {
+                    if card.movement[1] >= node.cost {
                         valid_moves.push(MoveAction {
-                            cards: (0..node.cost as usize).collect(),
+                            cards: vec![i],
                             path: vec![dir],
                         });
                     }
                 }
-                Terrain::Village => {
-                    // TODO: generate all length-cost combinations of cards.
-                    if me.num_cards() > 4 && me.hand.len() >= node.cost as usize
-                    {
+            }
+            Terrain::Water => {
+                for (i, card) in me.hand.iter().enumerate() {
+                    if card.movement[2] >= node.cost {
                         valid_moves.push(MoveAction {
-                            cards: (0..node.cost as usize).collect(),
+                            cards: vec![i],
                             path: vec![dir],
                         });
                     }
+                }
+            }
+            Terrain::Swamp => {
+                // TODO: generate all length-cost combinations of cards.
+                if me.hand.len() >= node.cost as usize {
+                    valid_moves.push(MoveAction {
+                        cards: (0..node.cost as usize).collect(),
+                        path: vec![dir],
+                    });
+                }
+            }
+            Terrain::Village => {
+                // TODO: generate all length-cost combinations of cards.
+                if me.num_cards() > 4 && me.hand.len() >= node.cost as usize {
+                    valid_moves.push(MoveAction {
+                        cards: (0..node.cost as usize).collect(),
+                        path: vec![dir],
+                    });
                 }
             }
         }

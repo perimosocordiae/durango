@@ -131,9 +131,8 @@ impl Player {
 
     pub fn debug_str(&self, idx: usize) -> String {
         format!(
-            "P{idx}({},{}): hand={:?}, deck={}, played={}, discard={}",
-            self.position.q,
-            self.position.r,
+            "P{idx}{:?}: hand={:?}, deck={}, played={}, discard={}",
+            self.position,
             &self.hand,
             self.deck.len(),
             self.played.len(),
@@ -224,7 +223,7 @@ impl GameState {
         self.players
             .iter()
             .enumerate()
-            .filter(|(_, p)| self.map.finish.contains(&p.position))
+            .filter(|(_, p)| self.map.is_finish(p.position))
             .map(|(i, _)| i)
             .collect()
     }
@@ -301,7 +300,7 @@ impl GameState {
 
     fn handle_move(&mut self, mv: &MoveAction) -> Result<(), String> {
         if mv.path.is_empty() {
-            return Err("Must move at least once".to_string());
+            return Err("Must move at least once".into());
         }
         let mut pos = self.curr_player().position;
         let mut move_cost: [u8; 3] = [0, 0, 0];
@@ -309,21 +308,32 @@ impl GameState {
         let mut visited_cave = None;
         for dir in &mv.path {
             let mut next_pos = dir.neighbor_coord(pos);
-            let next_node = &self.map.nodes[&next_pos];
-            match next_node.terrain {
-                Terrain::Jungle => move_cost[0] += next_node.cost,
-                Terrain::Desert => move_cost[1] += next_node.cost,
-                Terrain::Water => move_cost[2] += next_node.cost,
-                Terrain::Invalid => return Err("Invalid move".to_string()),
-                Terrain::Cave => {
-                    visited_cave = Some(next_pos);
-                    next_pos = pos;
+            if let Some(next_node) = self.map.node_at(next_pos) {
+                match next_node.terrain {
+                    Terrain::Jungle => move_cost[0] += next_node.cost,
+                    Terrain::Desert => move_cost[1] += next_node.cost,
+                    Terrain::Water => move_cost[2] += next_node.cost,
+                    Terrain::Invalid => {
+                        return Err(format!(
+                            "Cannot move onto invalid terrain {:?}",
+                            next_pos
+                        ))
+                    }
+                    Terrain::Cave => {
+                        visited_cave = Some(next_pos);
+                        next_pos = pos;
+                    }
+                    Terrain::Swamp => card_cost += next_node.cost,
+                    Terrain::Village => card_cost += next_node.cost,
                 }
-                Terrain::Swamp => card_cost += next_node.cost,
-                Terrain::Village => card_cost += next_node.cost,
+            } else {
+                return Err(format!("No node at position {:?}", next_pos));
             }
             if self.is_occupied(next_pos) {
-                return Err("Cannot move to occupied node".to_string());
+                return Err(format!(
+                    "Cannot move to occupied node {:?}",
+                    next_pos
+                ));
             }
             pos = next_pos;
         }
@@ -393,7 +403,7 @@ impl GameState {
         let player = &mut self.players[self.curr_player_idx];
         player.position = pos;
         if card_cost > 0
-            && matches!(self.map.nodes[&pos].terrain, Terrain::Village)
+            && self.map.with_terrain(pos, Terrain::Village).is_some()
         {
             player.trash_cards(&mv.cards);
         } else {
@@ -403,9 +413,9 @@ impl GameState {
     }
 
     fn give_bonus(&mut self, pos: AxialCoord) -> Result<(), String> {
-        let cave = &self.map.nodes[&pos];
-        if !matches!(cave.terrain, Terrain::Cave) {
-            return Err("Not a cave".to_string());
+        let cave = self.map.with_terrain(pos, Terrain::Cave);
+        if cave.is_none() {
+            return Err(format!("No cave at position {pos:?}"));
         }
         // TODO: check that we have enough bonuses in the cave.
         todo!("Implement cave bonuses")

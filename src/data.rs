@@ -16,12 +16,15 @@ pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
     Ok(out)
 }
 
-#[derive(
-    Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, Hash,
-)]
+#[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AxialCoord {
     pub q: i32,
     pub r: i32,
+}
+impl std::fmt::Debug for AxialCoord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({},{})", self.q, self.r)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -69,19 +72,18 @@ impl HexDirection {
             r: coord.r + dr,
         }
     }
-    pub fn all_directions() -> [Self; 6] {
-        [
-            Self::NorthEast,
-            Self::East,
-            Self::SouthEast,
-            Self::SouthWest,
-            Self::West,
-            Self::NorthWest,
-        ]
-    }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+static ALL_DIRECTIONS: [HexDirection; 6] = [
+    HexDirection::NorthEast,
+    HexDirection::East,
+    HexDirection::SouthEast,
+    HexDirection::SouthWest,
+    HexDirection::West,
+    HexDirection::NorthWest,
+];
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum Terrain {
     Invalid, // Invalid terrain
     Jungle,  // Jungle movement
@@ -180,10 +182,11 @@ fn load_layout(
 
 #[derive(Serialize, Deserialize)]
 pub struct HexMap {
-    pub nodes: HashMap<AxialCoord, Node>,
-    pub finish: Vec<AxialCoord>,
+    nodes: HashMap<AxialCoord, Node>,
+    finish: Vec<AxialCoord>,
 }
 impl HexMap {
+    /// Create a custom map from a layout description.
     pub fn create_custom(
         layout: &[LayoutInfo],
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -223,11 +226,43 @@ impl HexMap {
         }
         Ok(HexMap { nodes, finish })
     }
+    /// Create a map from a named layout.
     pub fn create_named(
         name: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let layout = load_layout(name)?;
         Self::create_custom(&layout)
+    }
+    /// Check if the given coordinate is a finish node.
+    pub fn is_finish(&self, coord: AxialCoord) -> bool {
+        self.finish.contains(&coord)
+    }
+    /// Get the neighboring nodes of a given coordinate.
+    pub fn neighbors_of(
+        &self,
+        coord: AxialCoord,
+    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
+        ALL_DIRECTIONS.iter().filter_map(move |dir| {
+            let neighbor_pos = dir.neighbor_coord(coord);
+            self.nodes
+                .get(&neighbor_pos)
+                .map(|node| (*dir, neighbor_pos, node))
+        })
+    }
+    pub fn node_at(&self, coord: AxialCoord) -> Option<&Node> {
+        self.nodes.get(&coord)
+    }
+    /// Checks if the given coordinate has a node of the given terrain.
+    pub fn with_terrain(
+        &self,
+        coord: AxialCoord,
+        terrain: Terrain,
+    ) -> Option<&Node> {
+        self.nodes.get(&coord).filter(|n| n.terrain == terrain)
+    }
+    /// Returns an iterator over all nodes in the map.
+    pub fn all_nodes(&self) -> impl Iterator<Item = (&AxialCoord, &Node)> {
+        self.nodes.iter()
     }
 }
 

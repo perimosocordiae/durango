@@ -1,6 +1,6 @@
 use clap::Parser;
 use durango::data::{self, AxialCoord};
-use durango::data::{HexDirection, HexMap, LayoutInfo, Terrain};
+use durango::data::{HexMap, LayoutInfo, Terrain};
 
 // Usage:
 // cargo run --example render_board -- -f dot | neato -Tsvg | display
@@ -29,28 +29,24 @@ fn dump_dot(map: &HexMap) {
     println!("digraph {{");
     println!("  overlap=false;");
     println!("  node [style=filled];");
-    for (coord, node) in &map.nodes {
+    for (coord, node) in map.all_nodes() {
         if matches!(node.terrain, Terrain::Invalid) {
             continue;
         }
         println!(
-            "  {} [label=\"{},{}: {}\",fillcolor={}]",
+            "  {} [label=\"{:?}: {}\",fillcolor={}]",
             coord_to_string(coord),
-            coord.q,
-            coord.r,
+            coord,
             node.cost,
             node.color()
         );
-        for dir in HexDirection::all_directions() {
-            let next_pos = dir.neighbor_coord(*coord);
-            if let Some(neighbor) = map.nodes.get(&next_pos) {
-                if !matches!(neighbor.terrain, Terrain::Invalid) {
-                    println!(
-                        "  {} -> {}",
-                        coord_to_string(coord),
-                        coord_to_string(&next_pos)
-                    );
-                }
+        for (_, next_pos, neighbor) in map.neighbors_of(*coord) {
+            if !matches!(neighbor.terrain, Terrain::Invalid) {
+                println!(
+                    "  {} -> {}",
+                    coord_to_string(coord),
+                    coord_to_string(&next_pos)
+                );
             }
         }
     }
@@ -80,7 +76,7 @@ fn dump_svg(map: &HexMap, size: f32) {
     let mut min_center = (f32::INFINITY, f32::INFINITY);
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
-    for (i, (coord, node)) in map.nodes.iter().enumerate() {
+    for (i, (coord, node)) in map.all_nodes().enumerate() {
         let (cx, cy) = axial_to_center(coord, size);
         if cx < min_center.0 {
             min_center.0 = cx;
