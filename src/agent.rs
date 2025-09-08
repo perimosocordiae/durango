@@ -59,9 +59,19 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
                         }
                     }
                 }
-                Terrain::Swamp | Terrain::Village => {
+                Terrain::Swamp => {
                     // TODO: generate all length-cost combinations of cards.
                     if me.hand.len() >= node.cost as usize {
+                        valid_moves.push(MoveAction {
+                            cards: (0..node.cost as usize).collect(),
+                            path: vec![dir],
+                        });
+                    }
+                }
+                Terrain::Village => {
+                    // TODO: generate all length-cost combinations of cards.
+                    if me.num_cards() > 4 && me.hand.len() >= node.cost as usize
+                    {
                         valid_moves.push(MoveAction {
                             cards: (0..node.cost as usize).collect(),
                             path: vec![dir],

@@ -121,13 +121,22 @@ impl Player {
         }
     }
 
+    /// Total cards belonging to the player.
+    pub fn num_cards(&self) -> usize {
+        self.hand.len()
+            + self.deck.len()
+            + self.played.len()
+            + self.discard.len()
+    }
+
     pub fn debug_str(&self, idx: usize) -> String {
         format!(
-            "P{idx} @{},{}: hand={:?}, deck={}, discard={}",
+            "P{idx}({},{}): hand={:?}, deck={}, played={}, discard={}",
             self.position.q,
             self.position.r,
             &self.hand,
             self.deck.len(),
+            self.played.len(),
             self.discard.len()
         )
     }
