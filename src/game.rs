@@ -147,7 +147,7 @@ impl GameState {
         preset: &str,
         rng: &mut impl rand::Rng,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        if num_players < 2 || num_players > 4 {
+        if !(2..=4).contains(&num_players) {
             return Err("Invalid number of players".into());
         }
         let map = HexMap::create_named(preset)?;
