@@ -18,10 +18,12 @@ pub struct Player {
 #[derive(Serialize, Deserialize)]
 pub struct GameState {
     pub map: HexMap,
+    #[serde(skip)]
     players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
     pub curr_player_idx: usize,
+    pub round_idx: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -202,12 +204,23 @@ impl GameState {
                 BuyableCard::action(10, CardAction::FreeMove, false),
             ],
             curr_player_idx: 0,
+            round_idx: 0,
         })
     }
 
     /// The player whose turn it is.
     pub fn curr_player(&self) -> &Player {
         &self.players[self.curr_player_idx]
+    }
+
+    /// How many players are in the game.
+    pub fn num_players(&self) -> usize {
+        self.players.len()
+    }
+
+    /// Positions of all players in the game.
+    pub fn player_positions(&self) -> Vec<AxialCoord> {
+        self.players.iter().map(|p| p.position).collect()
     }
 
     /// Is the specified node occupied by a player other than the current player?
@@ -225,6 +238,31 @@ impl GameState {
             .enumerate()
             .filter(|(_, p)| self.map.is_finish(p.position))
             .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Are any players on a finish hex?
+    pub fn any_finished_player(&self) -> bool {
+        self.players.iter().any(|p| self.map.is_finish(p.position))
+    }
+
+    /// Is the game over?
+    pub fn is_game_over(&self) -> bool {
+        self.curr_player_idx == 0 && self.any_finished_player()
+    }
+
+    /// Score each player, for determining who won.
+    pub fn player_scores(&self) -> Vec<i32> {
+        self.players
+            .iter()
+            .map(|p| {
+                if !self.map.is_finish(p.position) {
+                    return 0;
+                }
+                // TODO: break ties based on broken barriers, once
+                // barriers are included in the game.
+                1
+            })
             .collect()
     }
 
@@ -246,7 +284,8 @@ impl GameState {
                 self.curr_player_idx += 1;
                 self.curr_player_idx %= self.players.len();
                 if self.curr_player_idx == 0 {
-                    return Ok(!self.players_at_finish().is_empty());
+                    self.round_idx += 1;
+                    return Ok(self.any_finished_player());
                 }
             }
         }
@@ -317,7 +356,7 @@ impl GameState {
                         return Err(format!(
                             "Cannot move onto invalid terrain {:?}",
                             next_pos
-                        ))
+                        ));
                     }
                     Terrain::Cave => {
                         visited_cave = Some(next_pos);
