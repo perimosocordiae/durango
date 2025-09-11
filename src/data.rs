@@ -182,9 +182,32 @@ fn load_layout(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HexMap {
+    #[serde(serialize_with = "dict_to_vec", deserialize_with = "vec_to_dict")]
     nodes: HashMap<AxialCoord, Node>,
     finish: Vec<AxialCoord>,
 }
+
+fn dict_to_vec<S>(
+    dict: &HashMap<AxialCoord, Node>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let vec: Vec<(&AxialCoord, &Node)> = dict.iter().collect();
+    vec.serialize(serializer)
+}
+
+fn vec_to_dict<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<AxialCoord, Node>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let vec: Vec<(AxialCoord, Node)> = Vec::deserialize(deserializer)?;
+    Ok(vec.into_iter().collect())
+}
+
 impl HexMap {
     /// Create a custom map from a layout description.
     pub fn create_custom(
@@ -284,5 +307,14 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(map.nodes.len(), 74);
+    }
+
+    #[test]
+    fn named_layout() {
+        let map = HexMap::create_named("easy1").unwrap();
+        let str = serde_json::to_string(&map).unwrap();
+        let map2: HexMap = serde_json::from_str(&str).unwrap();
+        assert_eq!(map.nodes.len(), map2.nodes.len());
+        assert_eq!(map.finish.len(), map2.finish.len());
     }
 }
