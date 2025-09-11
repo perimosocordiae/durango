@@ -89,6 +89,12 @@ impl Player {
             self.played.push(self.hand.swap_remove(i));
         }
     }
+    /// Move specified `cards` from self.hand directly into self.discard.
+    fn discard_cards(&mut self, cards: &[usize]) {
+        for i in rev_sorted(cards) {
+            self.discard.push(self.hand.swap_remove(i));
+        }
+    }
     /// Remove specified `cards` from self.hand permanently.
     fn trash_cards(&mut self, cards: &[usize]) {
         for i in rev_sorted(cards) {
@@ -275,7 +281,7 @@ impl GameState {
             PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
             PlayerAction::Move(mv) => self.handle_move(mv)?,
             PlayerAction::Discard(cards) => {
-                self.players[self.curr_player_idx].mark_played(cards);
+                self.players[self.curr_player_idx].discard_cards(cards);
             }
             PlayerAction::FinishTurn => {
                 self.players[self.curr_player_idx]
@@ -313,18 +319,19 @@ impl GameState {
     }
 
     fn handle_buy(&mut self, buy: &BuyCardAction) -> Result<(), String> {
-        let card = self.buyable_card(&buy.index);
-        if card.quantity == 0 {
+        let bcard = self.buyable_card(&buy.index);
+        if bcard.quantity == 0 {
             return Err("Card is out of stock".into());
         }
         let hand = &self.curr_player().hand;
         let bucks: u8 = buy.cards.iter().map(|i| hand[*i].gold_value()).sum();
-        if bucks < card.cost {
+        if bucks < bcard.cost {
             return Err(format!(
                 "Not enough gold: have {}, need {}",
-                bucks, card.cost
+                bucks, bcard.cost
             ));
         }
+        let card = bcard.to_card();
         let shop_idx = match buy.index {
             BuyIndex::Shop(i) => i,
             BuyIndex::Storage(i) => {
@@ -337,6 +344,7 @@ impl GameState {
                 self.shop.len() - 1
             }
         };
+        self.players[self.curr_player_idx].discard.push(card);
         let qty = &mut self.shop[shop_idx].quantity;
         *qty -= 1;
         if *qty == 0 {

@@ -45,6 +45,14 @@ impl BuyableCard {
             quantity: 3,
         }
     }
+    /// Convert to a regular Card, after purchase.
+    pub fn to_card(&self) -> Card {
+        Card {
+            movement: self.movement,
+            single_use: self.single_use,
+            action: self.action.clone(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
