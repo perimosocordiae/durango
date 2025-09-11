@@ -94,7 +94,7 @@ pub enum Terrain {
     Cave,    // Get a bonus
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Node {
     pub terrain: Terrain,
     pub cost: u8,
@@ -180,7 +180,7 @@ fn load_layout(
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct HexMap {
     nodes: HashMap<AxialCoord, Node>,
     finish: Vec<AxialCoord>,

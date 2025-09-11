@@ -26,7 +26,7 @@ fn main() {
         }
     };
     let ais = (0..args.players)
-        .map(|_| agent::create_agent(0))
+        .map(|i| agent::create_agent(i))
         .collect::<Vec<_>>();
     for _ in 0..args.actions {
         println!("{}", g.curr_player().debug_str(g.curr_player_idx));

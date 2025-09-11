@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 const HAND_SIZE: usize = 4;
 const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Player {
     pub position: AxialCoord,
     deck: Vec<Card>,
@@ -15,11 +15,10 @@ pub struct Player {
     discard: Vec<Card>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GameState {
     pub map: HexMap,
-    #[serde(skip)]
-    players: Vec<Player>,
+    pub players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
     pub curr_player_idx: usize,
@@ -300,6 +299,16 @@ impl GameState {
         match idx {
             BuyIndex::Shop(i) => &self.shop[*i],
             BuyIndex::Storage(i) => &self.storage[*i],
+        }
+    }
+
+    pub fn all_buyable_cards(
+        &self,
+    ) -> Box<dyn Iterator<Item = &BuyableCard> + '_> {
+        if self.has_open_shop() {
+            Box::new(self.shop.iter().chain(self.storage.iter()))
+        } else {
+            Box::new(self.shop.iter())
         }
     }
 

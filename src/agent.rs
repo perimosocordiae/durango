@@ -12,7 +12,8 @@ pub fn create_agent(difficulty: usize) -> Box<dyn Agent + Send> {
     match difficulty {
         // Random (valid) actions.
         0 => Box::<RandomAgent>::default(),
-        _ => todo!("nontrivial agents"),
+        // Very simple heuristics.
+        _ => Box::<GreedyAgent>::default(),
     }
 }
 
@@ -128,5 +129,64 @@ impl Agent for RandomAgent {
             return PlayerAction::BuyCard(valid_buys.swap_remove(idx));
         }
         PlayerAction::Discard((0..me.hand.len()).collect())
+    }
+}
+
+#[derive(Default)]
+struct GreedyAgent {}
+impl Agent for GreedyAgent {
+    fn choose_action(&self, game: &GameState) -> PlayerAction {
+        let mut rng = rand::rng();
+        let me = game.curr_player();
+        if me.hand.is_empty() {
+            return PlayerAction::FinishTurn;
+        }
+
+        // Try to move as far as possible.
+        // TODO: Use distance to finish instead of path length.
+        let mut valid_moves = valid_move_actions(game);
+        if let Some(max_len) = valid_moves.iter().map(|m| m.path.len()).max() {
+            valid_moves.retain(|m| m.path.len() == max_len);
+            let idx = rng.random_range(0..valid_moves.len());
+            return PlayerAction::Move(valid_moves.swap_remove(idx));
+        }
+
+        // Try to buy the most expensive card possible.
+        let hand_len = me.hand.len();
+        let cash = me.hand.iter().map(|c| c.gold_value()).sum();
+        if let Some(max_cost) = game
+            .all_buyable_cards()
+            .filter(|c| c.cost <= cash)
+            .map(|c| c.cost)
+            .max()
+        {
+            let mut buys: Vec<BuyCardAction> = game
+                .shop
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.cost == max_cost)
+                .map(|(i, _)| BuyCardAction {
+                    cards: (0..hand_len).collect(),
+                    index: BuyIndex::Shop(i),
+                })
+                .collect();
+            if game.has_open_shop() {
+                buys.extend(
+                    game.storage
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, c)| c.cost == max_cost)
+                        .map(|(i, _)| BuyCardAction {
+                            cards: (0..hand_len).collect(),
+                            index: BuyIndex::Storage(i),
+                        }),
+                );
+            }
+            let idx = rng.random_range(0..buys.len());
+            return PlayerAction::BuyCard(buys.swap_remove(idx));
+        }
+
+        // Nothing else to do, discard all cards.
+        PlayerAction::Discard((0..hand_len).collect())
     }
 }
