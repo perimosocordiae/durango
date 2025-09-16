@@ -10,6 +10,33 @@ struct Args {
     preset: String,
     #[clap(short, long, default_value_t = 100)]
     actions: usize,
+    #[clap(short, long)]
+    interactive: bool,
+}
+
+fn interactive_action(g: &game::GameState) -> game::PlayerAction {
+    use std::io::{self, Write};
+    loop {
+        for (idx, card) in g.curr_player().hand.iter().enumerate() {
+            println!("  Card {}: {:?}", idx, card);
+        }
+        for (dir, pos, node) in g.map.neighbors_of(g.curr_player().position) {
+            println!("  Move to {:?} at {:?} via {:?}", node.terrain, pos, dir);
+        }
+        print!("Enter action: ");
+        io::stdout().flush().unwrap();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        if input.is_empty() {
+            // EOF from Ctrl-D
+            println!("\nExiting.");
+            std::process::exit(0);
+        }
+        match serde_json::from_str(&input) {
+            Ok(act) => return act,
+            Err(e) => println!("Invalid action: {}", e),
+        }
+    }
 }
 
 fn main() {
@@ -30,7 +57,12 @@ fn main() {
         .collect::<Vec<_>>();
     for _ in 0..args.actions {
         println!("{}", g.curr_player().debug_str(g.curr_player_idx));
-        let act = ais[g.curr_player_idx].choose_action(&g);
+        let is_user = args.interactive && g.curr_player_idx == 0;
+        let act = if is_user {
+            interactive_action(&g)
+        } else {
+            ais[g.curr_player_idx].choose_action(&g)
+        };
         println!(" action: {:?}", &act);
         match g.process_action(&act) {
             Ok(true) => {
@@ -40,7 +72,9 @@ fn main() {
             Ok(false) => {}
             Err(e) => {
                 println!("Error processing action: {}", e);
-                break;
+                if !is_user {
+                    break;
+                }
             }
         }
     }

@@ -83,7 +83,7 @@ static ALL_DIRECTIONS: [HexDirection; 6] = [
     HexDirection::NorthWest,
 ];
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 pub enum Terrain {
     Invalid, // Invalid terrain
     Jungle,  // Jungle movement

@@ -414,7 +414,10 @@ impl GameState {
             Some(CardAction::FreeMove)
         ) {
             if mv.path.len() != 1 {
-                return Err("Only one step allowed".to_string());
+                return Err(format!(
+                    "Only one step allowed for free movement, got {}",
+                    mv.path.len()
+                ));
             }
             card_cost = 0;
             move_cost = [0, 0, 0];
@@ -423,7 +426,10 @@ impl GameState {
         // Validate discarding / trashing cards.
         if card_cost > 0 {
             if mv.path.len() != 1 {
-                return Err("Only one step allowed".to_string());
+                return Err(format!(
+                    "Can only move one step when discarding/trashing cards, got {}",
+                    mv.path.len()
+                ));
             }
             if mv.cards.len() != card_cost as usize {
                 return Err(format!(
@@ -435,21 +441,25 @@ impl GameState {
         } else {
             // Validate normal movement.
             if mv.cards.len() != 1 {
-                return Err("Must use a single card to move".to_string());
+                return Err(format!(
+                    "Must use a single card to move, got {}",
+                    mv.cards.len()
+                ));
             }
             let total_cost: u8 = move_cost.iter().sum();
             let max_cost: u8 = *move_cost.iter().max().unwrap();
             if total_cost != max_cost {
-                return Err(
-                    "Path must contain a single movement type".to_string()
-                );
+                return Err(format!(
+                    "Path must contain a single movement type, got J={}, D={}, W={}",
+                    move_cost[0], move_cost[1], move_cost[2]
+                ));
             }
             let card = &self.curr_player().hand[mv.cards[0]];
             for (i, move_type) in MOVE_TYPES.iter().enumerate() {
                 if move_cost[i] > card.movement[i] {
                     return Err(format!(
-                        "Need {} {} movement, but card only has {}",
-                        move_cost[i], move_type, card.movement[i]
+                        "Need {}+ {} movement, but card {:?} has {}",
+                        move_cost[i], move_type, card, card.movement[i]
                     ));
                 }
             }

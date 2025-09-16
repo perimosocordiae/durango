@@ -98,7 +98,7 @@ impl std::fmt::Debug for Card {
             write!(f, "D{}", self.movement[1])?;
         }
         if self.movement[2] > 0 {
-            write!(f, "J{}", self.movement[2])?
+            write!(f, "W{}", self.movement[2])?;
         }
         if self.single_use {
             f.write_str(" (1x)")?;
