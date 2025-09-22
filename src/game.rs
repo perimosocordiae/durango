@@ -132,15 +132,7 @@ impl Player {
     }
     /// Clean up after the turn is over.
     fn finish_turn(&mut self, rng: &mut impl rand::Rng) {
-        // Trash any played cards marked as single-use.
-        for i in (0..self.played.len()).rev() {
-            if self.played[i].single_use {
-                // TODO: avoid trashing cards if they weren't used for their
-                // specified single-use purpose.
-                self.played.swap_remove(i);
-            }
-        }
-        // Discard any remaining played cards.
+        // Discard all played cards.
         self.discard.append(&mut self.played);
         // Refill the hand for the next turn.
         self.fill_hand(HAND_SIZE, rng);
@@ -366,8 +358,21 @@ impl GameState {
                 ));
             }
         }
+        // Identify any single-use cards used to pay for the purchase. Note that
+        // it's possible to use a single-use card as part of the payment without
+        // triggering the single-use condition, so we only want to trash it if
+        // it's actually providing non-default value (gold or a free buy).
+        let single_use_idxs: Vec<usize> = buy
+            .cards
+            .iter()
+            .cloned()
+            .filter(|&i| {
+                hand[i].single_use && (is_free_buy || hand[i].gold_value() > 0)
+            })
+            .collect();
         let card = bcard.to_card();
         if is_free_buy {
+            // Just take the card without moving from storage to shop.
             match buy.index {
                 BuyIndex::Shop(i) => {
                     take_card(&mut self.shop, i);
@@ -376,9 +381,8 @@ impl GameState {
                     take_card(&mut self.storage, i);
                 }
             }
-            self.players[self.curr_player_idx].discard.push(card);
-            self.players[self.curr_player_idx].trash_cards(&buy.cards);
         } else {
+            // Move the card from storage to shop if needed, then take it.
             let shop_idx = match buy.index {
                 BuyIndex::Shop(i) => i,
                 BuyIndex::Storage(i) => {
@@ -392,8 +396,24 @@ impl GameState {
                 }
             };
             take_card(&mut self.shop, shop_idx);
-            self.players[self.curr_player_idx].discard.push(card);
+        }
+        // Add the newly-bought card to the player's discard pile.
+        self.players[self.curr_player_idx].discard.push(card);
+        // Discard or trash the cards used to pay for the purchase.
+        if single_use_idxs.is_empty() {
             self.players[self.curr_player_idx].mark_played(&buy.cards);
+        } else if single_use_idxs.len() == buy.cards.len() {
+            // All cards used were single-use, so trash them all.
+            self.players[self.curr_player_idx].trash_cards(&buy.cards);
+        } else {
+            // We have a mix: some cards to trash, some to discard.
+            let p = &mut self.players[self.curr_player_idx];
+            for i in &buy.cards {
+                if single_use_idxs.contains(i) {
+                    continue;
+                }
+                p.played.push(p.hand[*i].clone());
+            }
         }
         Ok(())
     }
@@ -453,10 +473,12 @@ impl GameState {
             return Err("Must use cards to move".to_string());
         }
         // Handle cards that provide a free move.
-        if matches!(
-            self.curr_player().hand[mv.cards[0]].action,
-            Some(CardAction::FreeMove)
-        ) {
+        if mv.cards.len() == 1
+            && matches!(
+                self.curr_player().hand[mv.cards[0]].action,
+                Some(CardAction::FreeMove)
+            )
+        {
             if mv.path.len() != 1 {
                 return Err(format!(
                     "Only one step allowed for free movement, got {}",
@@ -467,8 +489,9 @@ impl GameState {
             move_cost = [0, 0, 0];
         }
 
-        // Validate discarding / trashing cards.
+        let mut is_single_use = false;
         if card_cost > 0 {
+            // Validate discarding / trashing cards.
             if mv.path.len() != 1 {
                 return Err(format!(
                     "Can only move one step when discarding/trashing cards, got {}",
@@ -499,6 +522,7 @@ impl GameState {
                 ));
             }
             let card = &self.curr_player().hand[mv.cards[0]];
+            is_single_use = card.single_use;
             for (i, move_type) in MOVE_TYPES.iter().enumerate() {
                 if move_cost[i] > card.movement[i] {
                     return Err(format!(
@@ -512,8 +536,9 @@ impl GameState {
         // Update the player's position and cards.
         let player = &mut self.players[self.curr_player_idx];
         player.position = pos;
-        if card_cost > 0
-            && self.map.with_terrain(pos, Terrain::Village).is_some()
+        if is_single_use
+            || (card_cost > 0
+                && self.map.with_terrain(pos, Terrain::Village).is_some())
         {
             player.trash_cards(&mv.cards);
         } else {
@@ -533,6 +558,7 @@ impl GameState {
             "Invalid card index {}, given {hand_size} cards in hand",
             draw.card
         ))?;
+        let is_single_use = card.single_use;
         match card.action {
             Some(CardAction::Draw(n)) => {
                 self.players[self.curr_player_idx]
@@ -549,7 +575,11 @@ impl GameState {
                 ));
             }
         }
-        self.players[self.curr_player_idx].mark_played(&[draw.card]);
+        if is_single_use {
+            self.players[self.curr_player_idx].trash_cards(&[draw.card]);
+        } else {
+            self.players[self.curr_player_idx].mark_played(&[draw.card]);
+        }
         Ok(())
     }
 
