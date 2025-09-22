@@ -1,6 +1,7 @@
+use crate::cards::CardAction;
 use crate::data::Terrain;
 use crate::game::{
-    BuyCardAction, BuyIndex, GameState, MoveAction, PlayerAction,
+    BuyCardAction, BuyIndex, DrawAction, GameState, MoveAction, PlayerAction,
 };
 use rand::Rng;
 
@@ -109,6 +110,20 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
     buys
 }
 
+fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
+    game.curr_player()
+        .hand
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| match c.action {
+            Some(CardAction::Draw(_)) | Some(CardAction::DrawAndTrash(_)) => {
+                Some(DrawAction { card: i })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 #[derive(Default)]
 struct RandomAgent {}
 impl Agent for RandomAgent {
@@ -117,6 +132,11 @@ impl Agent for RandomAgent {
         let me = game.curr_player();
         if me.hand.is_empty() {
             return PlayerAction::FinishTurn;
+        }
+        let mut valid_draws = valid_draw_actions(game);
+        if !valid_draws.is_empty() {
+            let idx = rng.random_range(0..valid_draws.len());
+            return PlayerAction::Draw(valid_draws.swap_remove(idx));
         }
         let mut valid_moves = valid_move_actions(game);
         if !valid_moves.is_empty() {
