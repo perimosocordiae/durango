@@ -13,6 +13,7 @@ pub struct Player {
     pub hand: Vec<Card>,
     played: Vec<Card>,
     discard: Vec<Card>,
+    trashes: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -44,9 +45,21 @@ pub struct MoveAction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct DrawAction {
+    pub card: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TrashAction {
+    pub cards: Vec<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub enum PlayerAction {
     BuyCard(BuyCardAction),
     Move(MoveAction),
+    Draw(DrawAction),
+    Trash(TrashAction),
     Discard(Vec<usize>),
     FinishTurn,
 }
@@ -81,6 +94,7 @@ impl Player {
             hand,
             played: Vec::new(),
             discard: Vec::new(),
+            trashes: 0,
         }
     }
     /// Move specified `cards` from self.hand into self.played.
@@ -101,6 +115,21 @@ impl Player {
             self.hand.swap_remove(i);
         }
     }
+    /// Fill hand from the deck, adding shuffled cards from the discard if needed.
+    fn fill_hand(&mut self, hand_size: usize, rng: &mut impl rand::Rng) {
+        while self.hand.len() < hand_size {
+            if self.deck.is_empty() && !self.discard.is_empty() {
+                // Shuffle the discard pile into the deck.
+                self.deck.append(&mut self.discard);
+                self.deck.shuffle(rng);
+            }
+            if let Some(card) = self.deck.pop() {
+                self.hand.push(card);
+            } else {
+                break;
+            }
+        }
+    }
     /// Clean up after the turn is over.
     fn finish_turn(&mut self, rng: &mut impl rand::Rng) {
         // Trash any played cards marked as single-use.
@@ -113,19 +142,10 @@ impl Player {
         }
         // Discard any remaining played cards.
         self.discard.append(&mut self.played);
-        // Refill the hand from the deck.
-        while self.hand.len() < HAND_SIZE {
-            if self.deck.is_empty() && !self.discard.is_empty() {
-                // Shuffle the discard pile into the deck.
-                self.deck.append(&mut self.discard);
-                self.deck.shuffle(rng);
-            }
-            if let Some(card) = self.deck.pop() {
-                self.hand.push(card);
-            } else {
-                break;
-            }
-        }
+        // Refill the hand for the next turn.
+        self.fill_hand(HAND_SIZE, rng);
+        // Reset any unused trashes.
+        self.trashes = 0;
     }
 
     /// Total cards belonging to the player.
@@ -280,6 +300,10 @@ impl GameState {
         match action {
             PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
             PlayerAction::Move(mv) => self.handle_move(mv)?,
+            PlayerAction::Draw(draw) => {
+                self.handle_draw(draw, &mut rand::rng())?
+            }
+            PlayerAction::Trash(trash) => self.handle_trash(trash)?,
             PlayerAction::Discard(cards) => {
                 self.players[self.curr_player_idx].discard_cards(cards);
             }
@@ -495,6 +519,51 @@ impl GameState {
         } else {
             player.mark_played(&mv.cards);
         }
+        Ok(())
+    }
+
+    fn handle_draw(
+        &mut self,
+        draw: &DrawAction,
+        rng: &mut impl rand::Rng,
+    ) -> Result<(), String> {
+        let hand = &self.curr_player().hand;
+        let hand_size = hand.len();
+        let card = hand.get(draw.card).ok_or(format!(
+            "Invalid card index {}, given {hand_size} cards in hand",
+            draw.card
+        ))?;
+        match card.action {
+            Some(CardAction::Draw(n)) => {
+                self.players[self.curr_player_idx]
+                    .fill_hand(hand_size + n, rng);
+            }
+            Some(CardAction::DrawAndTrash(n)) => {
+                self.players[self.curr_player_idx]
+                    .fill_hand(hand_size + n, rng);
+                self.players[self.curr_player_idx].trashes += n;
+            }
+            _ => {
+                return Err(format!(
+                    "Cannot use card {card:?} to draw more cards"
+                ));
+            }
+        }
+        self.players[self.curr_player_idx].mark_played(&[draw.card]);
+        Ok(())
+    }
+
+    fn handle_trash(&mut self, trash: &TrashAction) -> Result<(), String> {
+        let num_to_trash = trash.cards.len();
+        let num_allowed = self.curr_player().trashes;
+        if num_to_trash > num_allowed {
+            return Err(format!(
+                "Cannot trash {} cards when {} are allowed",
+                num_to_trash, num_allowed,
+            ));
+        }
+        self.players[self.curr_player_idx].trash_cards(&trash.cards);
+        self.players[self.curr_player_idx].trashes -= num_to_trash;
         Ok(())
     }
 
