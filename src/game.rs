@@ -325,32 +325,52 @@ impl GameState {
         }
         let hand = &self.curr_player().hand;
         let bucks: u8 = buy.cards.iter().map(|i| hand[*i].gold_value()).sum();
+        let mut is_free_buy = false;
         if bucks < bcard.cost {
-            return Err(format!(
-                "Not enough gold: have {}, need {}",
-                bucks, bcard.cost
-            ));
+            // Check if we're trying to use a FreeBuy card.
+            if buy.cards.len() == 1
+                && matches!(
+                    hand[buy.cards[0]].action,
+                    Some(CardAction::FreeBuy)
+                )
+            {
+                is_free_buy = true;
+            } else {
+                return Err(format!(
+                    "Not enough gold: have {}, need {}",
+                    bucks, bcard.cost
+                ));
+            }
         }
         let card = bcard.to_card();
-        let shop_idx = match buy.index {
-            BuyIndex::Shop(i) => i,
-            BuyIndex::Storage(i) => {
-                if !self.has_open_shop() {
-                    return Err(
-                        "Cannot buy from storage while shop is full".into()
-                    );
+        if is_free_buy {
+            match buy.index {
+                BuyIndex::Shop(i) => {
+                    take_card(&mut self.shop, i);
                 }
-                self.shop.push(self.storage.swap_remove(i));
-                self.shop.len() - 1
+                BuyIndex::Storage(i) => {
+                    take_card(&mut self.storage, i);
+                }
             }
-        };
-        self.players[self.curr_player_idx].discard.push(card);
-        let qty = &mut self.shop[shop_idx].quantity;
-        *qty -= 1;
-        if *qty == 0 {
-            self.shop.swap_remove(shop_idx);
+            self.players[self.curr_player_idx].discard.push(card);
+            self.players[self.curr_player_idx].trash_cards(&buy.cards);
+        } else {
+            let shop_idx = match buy.index {
+                BuyIndex::Shop(i) => i,
+                BuyIndex::Storage(i) => {
+                    if !self.has_open_shop() {
+                        return Err(
+                            "Cannot buy from storage while shop is full".into(),
+                        );
+                    }
+                    self.shop.push(self.storage.swap_remove(i));
+                    self.shop.len() - 1
+                }
+            };
+            take_card(&mut self.shop, shop_idx);
+            self.players[self.curr_player_idx].discard.push(card);
+            self.players[self.curr_player_idx].mark_played(&buy.cards);
         }
-        self.players[self.curr_player_idx].mark_played(&buy.cards);
         Ok(())
     }
 
@@ -485,6 +505,15 @@ impl GameState {
         }
         // TODO: check that we have enough bonuses in the cave.
         todo!("Implement cave bonuses")
+    }
+}
+
+fn take_card(cards: &mut Vec<BuyableCard>, idx: usize) {
+    if let Some(card) = cards.get_mut(idx) {
+        card.quantity -= 1;
+        if card.quantity == 0 {
+            cards.swap_remove(idx);
+        }
     }
 }
 
