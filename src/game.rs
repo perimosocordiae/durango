@@ -409,11 +409,11 @@ impl GameState {
             // We have a mix: some cards to trash, some to discard.
             let p = &mut self.players[self.curr_player_idx];
             for i in &buy.cards {
-                if single_use_idxs.contains(i) {
-                    continue;
+                if !single_use_idxs.contains(i) {
+                    p.played.push(p.hand[*i].clone());
                 }
-                p.played.push(p.hand[*i].clone());
             }
+            p.hand.clear();
         }
         Ok(())
     }
