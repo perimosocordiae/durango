@@ -84,6 +84,32 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
 
 fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
     let hand = &game.curr_player().hand;
+    // Check for FreeBuy cards first.
+    for (i, c) in hand.iter().enumerate() {
+        if let Some(CardAction::FreeBuy) = c.action {
+            // Can buy any card for free, so just return all possible buys.
+            let mut buys: Vec<BuyCardAction> = game
+                .shop
+                .iter()
+                .enumerate()
+                .map(|(j, _)| BuyCardAction {
+                    cards: vec![i],
+                    index: BuyIndex::Shop(j),
+                })
+                .collect();
+            buys.extend(game.storage.iter().enumerate().map(|(j, _)| {
+                BuyCardAction {
+                    cards: vec![i],
+                    index: BuyIndex::Storage(j),
+                }
+            }));
+            return buys;
+        }
+    }
+    // Otherwise, buy cards normally.
+    if !game.curr_player().can_buy {
+        return vec![];
+    }
     let cash = hand.iter().map(|c| c.gold_value()).sum();
     let mut buys: Vec<BuyCardAction> = game
         .shop
@@ -162,6 +188,30 @@ impl Agent for GreedyAgent {
             return PlayerAction::FinishTurn;
         }
 
+        // Play any draw cards.
+        if let Some(act) = valid_draw_actions(game).into_iter().next() {
+            return PlayerAction::Draw(act);
+        }
+
+        // Play any FreeBuy cards, picking the most expensive card possible.
+        if me
+            .hand
+            .iter()
+            .any(|c| matches!(c.action, Some(CardAction::FreeBuy)))
+        {
+            let buys = valid_buy_actions(game);
+            if let Some(max_cost) =
+                buys.iter().map(|b| game.buyable_card(&b.index).cost).max()
+            {
+                let mut best_buys: Vec<BuyCardAction> = buys
+                    .into_iter()
+                    .filter(|b| game.buyable_card(&b.index).cost == max_cost)
+                    .collect();
+                let idx = rng.random_range(0..best_buys.len());
+                return PlayerAction::BuyCard(best_buys.swap_remove(idx));
+            }
+        }
+
         // Try to move as far as possible.
         // TODO: Use distance to finish instead of path length.
         let mut valid_moves = valid_move_actions(game);
@@ -174,11 +224,12 @@ impl Agent for GreedyAgent {
         // Try to buy the most expensive card possible.
         let hand_len = me.hand.len();
         let cash = me.hand.iter().map(|c| c.gold_value()).sum();
-        if let Some(max_cost) = game
-            .all_buyable_cards()
-            .filter(|c| c.cost <= cash)
-            .map(|c| c.cost)
-            .max()
+        if me.can_buy
+            && let Some(max_cost) = game
+                .all_buyable_cards()
+                .filter(|c| c.cost <= cash)
+                .map(|c| c.cost)
+                .max()
         {
             let mut buys: Vec<BuyCardAction> = game
                 .shop

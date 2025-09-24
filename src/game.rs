@@ -14,6 +14,7 @@ pub struct Player {
     played: Vec<Card>,
     discard: Vec<Card>,
     trashes: usize,
+    pub can_buy: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -95,6 +96,7 @@ impl Player {
             played: Vec::new(),
             discard: Vec::new(),
             trashes: 0,
+            can_buy: true,
         }
     }
     /// Move specified `cards` from self.hand into self.played.
@@ -150,12 +152,13 @@ impl Player {
 
     pub fn debug_str(&self, idx: usize) -> String {
         format!(
-            "P{idx}{:?}: hand={:?}, deck={}, played={}, discard={}",
+            "P{idx}{:?}: hand={:?}, deck={}, played={}, discard={}, can_buy={}",
             self.position,
             &self.hand,
             self.deck.len(),
             self.played.len(),
-            self.discard.len()
+            self.discard.len(),
+            self.can_buy
         )
     }
 }
@@ -317,7 +320,7 @@ impl GameState {
         self.shop.len() < 6
     }
 
-    fn buyable_card(&self, idx: &BuyIndex) -> &BuyableCard {
+    pub fn buyable_card(&self, idx: &BuyIndex) -> &BuyableCard {
         match idx {
             BuyIndex::Shop(i) => &self.shop[*i],
             BuyIndex::Storage(i) => &self.storage[*i],
@@ -357,6 +360,9 @@ impl GameState {
                     bucks, bcard.cost
                 ));
             }
+        }
+        if !is_free_buy && !self.curr_player().can_buy {
+            return Err("Can only buy one card per turn".into());
         }
         // Identify any single-use cards used to pay for the purchase. Note that
         // it's possible to use a single-use card as part of the payment without
@@ -414,6 +420,10 @@ impl GameState {
                 }
             }
             p.hand.clear();
+        }
+        // Ensure we only buy one card per turn (exluding free buys).
+        if !is_free_buy {
+            self.players[self.curr_player_idx].can_buy = false;
         }
         Ok(())
     }
