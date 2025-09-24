@@ -71,7 +71,7 @@ fn main() {
             }
             Ok(false) => {}
             Err(e) => {
-                println!("Error processing action: {}", e);
+                eprintln!("Error processing action: {}", e);
                 if !is_user {
                     break;
                 }

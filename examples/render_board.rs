@@ -133,6 +133,10 @@ fn render(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         dump_dot(&map);
     } else if args.format == "svg" {
         dump_svg(&map, 30.0);
+    } else if args.format == "raw" {
+        for (coord, node) in map.all_nodes() {
+            println!("{:?} {:?} {}", coord, node.terrain, node.cost);
+        }
     } else {
         eprintln!("Unsupported format: {}", args.format);
     }
