@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
@@ -16,7 +14,9 @@ pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
     Ok(out)
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(
+    Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct AxialCoord {
     pub q: i32,
     pub r: i32,
@@ -98,6 +98,7 @@ pub enum Terrain {
 pub struct Node {
     pub terrain: Terrain,
     pub cost: u8,
+    pub board_idx: u8,
 }
 impl Node {
     pub fn color(&self) -> &'static str {
@@ -115,8 +116,8 @@ impl Node {
 
 #[derive(Serialize, Deserialize)]
 struct SavedNode {
-    #[serde(flatten)]
-    node: Node,
+    terrain: Terrain,
+    cost: u8,
     #[serde(flatten)]
     coord: AxialCoord,
 }
@@ -182,30 +183,9 @@ fn load_layout(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HexMap {
-    #[serde(serialize_with = "dict_to_vec", deserialize_with = "vec_to_dict")]
-    nodes: HashMap<AxialCoord, Node>,
+    // Mapping from axial coordinates to nodes, in sorted order.
+    nodes: Vec<(AxialCoord, Node)>,
     finish: Vec<AxialCoord>,
-}
-
-fn dict_to_vec<S>(
-    dict: &HashMap<AxialCoord, Node>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let vec: Vec<(&AxialCoord, &Node)> = dict.iter().collect();
-    vec.serialize(serializer)
-}
-
-fn vec_to_dict<'de, D>(
-    deserializer: D,
-) -> Result<HashMap<AxialCoord, Node>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let vec: Vec<(AxialCoord, Node)> = Vec::deserialize(deserializer)?;
-    Ok(vec.into_iter().collect())
 }
 
 impl HexMap {
@@ -217,10 +197,11 @@ impl HexMap {
             return Err("Cannot create map with an empty layout".into());
         }
         let last_board = layout.len() - 1;
-        let mut nodes = HashMap::new();
+        let mut nodes = Vec::new();
         let mut finish = Vec::new();
         for (i, info) in layout.iter().enumerate() {
             let board_nodes = load_board(info.board)?;
+            let board_idx = i as u8;
             for mut tmp in board_nodes.into_iter() {
                 let coord = &mut tmp.coord;
                 // Rotate coord based on info.rotation
@@ -233,18 +214,25 @@ impl HexMap {
                 // Translate coord based on info.center
                 coord.q += info.center.q;
                 coord.r += info.center.r;
-                // Insert into map, unless there's already something there
-                match nodes.entry(*coord) {
-                    std::collections::hash_map::Entry::Vacant(e) => {
-                        e.insert(tmp.node);
-                    }
-                    std::collections::hash_map::Entry::Occupied(_) => {
-                        return Err("Overlapping boards".into());
-                    }
-                }
+                nodes.push((
+                    *coord,
+                    Node {
+                        terrain: tmp.terrain,
+                        cost: tmp.cost,
+                        board_idx,
+                    },
+                ));
+                // Mark finish nodes from the last board.
                 if i == last_board {
-                    finish.push(*coord);
+                    finish.push(nodes.last().unwrap().0);
                 }
+            }
+        }
+        nodes.sort_unstable_by_key(|(coord, _)| *coord);
+        // Check if any two nodes overlap.
+        for w in nodes.windows(2) {
+            if w[0].0 == w[1].0 {
+                return Err(format!("Overlapping nodes at {:?}", w[0].0).into());
             }
         }
         Ok(HexMap { nodes, finish })
@@ -267,13 +255,15 @@ impl HexMap {
     ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
         ALL_DIRECTIONS.iter().filter_map(move |dir| {
             let neighbor_pos = dir.neighbor_coord(coord);
-            self.nodes
-                .get(&neighbor_pos)
+            self.node_at(neighbor_pos)
                 .map(|node| (*dir, neighbor_pos, node))
         })
     }
     pub fn node_at(&self, coord: AxialCoord) -> Option<&Node> {
-        self.nodes.get(&coord)
+        match self.nodes.binary_search_by_key(&coord, |(c, _)| *c) {
+            Ok(idx) => Some(&self.nodes[idx].1),
+            Err(_) => None,
+        }
     }
     /// Checks if the given coordinate has a node of the given terrain.
     pub fn with_terrain(
@@ -281,10 +271,10 @@ impl HexMap {
         coord: AxialCoord,
         terrain: Terrain,
     ) -> Option<&Node> {
-        self.nodes.get(&coord).filter(|n| n.terrain == terrain)
+        self.node_at(coord).filter(|n| n.terrain == terrain)
     }
     /// Returns an iterator over all nodes in the map.
-    pub fn all_nodes(&self) -> impl Iterator<Item = (&AxialCoord, &Node)> {
+    pub fn all_nodes(&self) -> impl Iterator<Item = &(AxialCoord, Node)> {
         self.nodes.iter()
     }
 }
