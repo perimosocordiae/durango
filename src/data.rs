@@ -94,7 +94,7 @@ pub enum Terrain {
     Cave,    // Get a bonus
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Node {
     pub terrain: Terrain,
     pub cost: u8,
@@ -278,6 +278,7 @@ impl HexMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches::assert_matches;
 
     #[test]
     fn single_board() {
@@ -302,5 +303,50 @@ mod tests {
         let map2: HexMap = serde_json::from_str(&str).unwrap();
         assert_eq!(map.nodes.len(), map2.nodes.len());
         assert_eq!(map.finish_idx, map2.finish_idx);
+    }
+
+    #[test]
+    fn neighbors() {
+        let map = HexMap::create_custom(&[
+            LayoutInfo::new('B', 1, 0, 0),
+            LayoutInfo::new('C', 0, 3, -7),
+        ])
+        .unwrap();
+        let nbrs = map
+            .neighbors_of(AxialCoord { q: 0, r: 0 })
+            .collect::<Vec<_>>();
+        assert_eq!(nbrs.len(), 6);
+        assert_matches!(
+            nbrs[0],
+            (
+                HexDirection::NorthEast,
+                AxialCoord { q: 1, r: -1 },
+                Node {
+                    terrain: Terrain::Jungle,
+                    cost: 1,
+                    board_idx: 0
+                }
+            )
+        );
+        assert_matches!(
+            nbrs[1],
+            (HexDirection::East, AxialCoord { q: 1, r: 0 }, _)
+        );
+        assert_matches!(
+            nbrs[2],
+            (HexDirection::SouthEast, AxialCoord { q: 0, r: 1 }, _)
+        );
+        assert_matches!(
+            nbrs[3],
+            (HexDirection::SouthWest, AxialCoord { q: -1, r: 1 }, _)
+        );
+        assert_matches!(
+            nbrs[4],
+            (HexDirection::West, AxialCoord { q: -1, r: 0 }, _)
+        );
+        assert_matches!(
+            nbrs[5],
+            (HexDirection::NorthWest, AxialCoord { q: 0, r: -1 }, _)
+        );
     }
 }
