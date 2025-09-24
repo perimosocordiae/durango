@@ -185,7 +185,8 @@ fn load_layout(
 pub struct HexMap {
     // Mapping from axial coordinates to nodes, in sorted order.
     nodes: Vec<(AxialCoord, Node)>,
-    finish: Vec<AxialCoord>,
+    // Index of the "finish" board.
+    finish_idx: u8,
 }
 
 impl HexMap {
@@ -196,9 +197,7 @@ impl HexMap {
         if layout.is_empty() {
             return Err("Cannot create map with an empty layout".into());
         }
-        let last_board = layout.len() - 1;
         let mut nodes = Vec::new();
-        let mut finish = Vec::new();
         for (i, info) in layout.iter().enumerate() {
             let board_nodes = load_board(info.board)?;
             let board_idx = i as u8;
@@ -222,10 +221,6 @@ impl HexMap {
                         board_idx,
                     },
                 ));
-                // Mark finish nodes from the last board.
-                if i == last_board {
-                    finish.push(nodes.last().unwrap().0);
-                }
             }
         }
         nodes.sort_unstable_by_key(|(coord, _)| *coord);
@@ -235,7 +230,8 @@ impl HexMap {
                 return Err(format!("Overlapping nodes at {:?}", w[0].0).into());
             }
         }
-        Ok(HexMap { nodes, finish })
+        let finish_idx = (layout.len() - 1) as u8;
+        Ok(HexMap { nodes, finish_idx })
     }
     /// Create a map from a named layout.
     pub fn create_named(
@@ -246,7 +242,7 @@ impl HexMap {
     }
     /// Check if the given coordinate is a finish node.
     pub fn is_finish(&self, coord: AxialCoord) -> bool {
-        self.finish.contains(&coord)
+        self.node_at(coord).map(|n| n.board_idx) == Some(self.finish_idx)
     }
     /// Get the neighboring nodes of a given coordinate.
     pub fn neighbors_of(
@@ -305,6 +301,6 @@ mod tests {
         let str = serde_json::to_string(&map).unwrap();
         let map2: HexMap = serde_json::from_str(&str).unwrap();
         assert_eq!(map.nodes.len(), map2.nodes.len());
-        assert_eq!(map.finish.len(), map2.finish.len());
+        assert_eq!(map.finish_idx, map2.finish_idx);
     }
 }
