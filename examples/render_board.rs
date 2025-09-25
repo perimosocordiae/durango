@@ -29,7 +29,7 @@ fn dump_dot(map: &HexMap) {
     println!("digraph {{");
     println!("  overlap=false;");
     println!("  node [style=filled];");
-    for (coord, node) in map.all_nodes() {
+    for (i, (coord, node)) in map.all_nodes().enumerate() {
         if matches!(node.terrain, Terrain::Invalid) {
             continue;
         }
@@ -40,7 +40,7 @@ fn dump_dot(map: &HexMap) {
             node.cost,
             node.color()
         );
-        for (_, next_pos, neighbor) in map.neighbors_of(*coord) {
+        for (_, next_pos, neighbor) in map.neighbors_of_idx(i) {
             if !matches!(neighbor.terrain, Terrain::Invalid) {
                 println!(
                     "  {} -> {}",

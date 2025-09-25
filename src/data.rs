@@ -187,6 +187,9 @@ pub struct HexMap {
     nodes: Vec<(AxialCoord, Node)>,
     // Index of the "finish" board.
     finish_idx: u8,
+    // Adjacency list, in the same order as nodes.
+    #[serde(skip)]
+    adj: Vec<[usize; 6]>,
 }
 
 impl HexMap {
@@ -231,7 +234,25 @@ impl HexMap {
             }
         }
         let finish_idx = (layout.len() - 1) as u8;
-        Ok(HexMap { nodes, finish_idx })
+        // Build the adjacency list
+        let adj = nodes
+            .iter()
+            .map(|(pos, _)| {
+                let mut neighbors = [0; 6];
+                for (i, dir) in ALL_DIRECTIONS.iter().enumerate() {
+                    let nbr_pos = dir.neighbor_coord(*pos);
+                    neighbors[i] = nodes
+                        .binary_search_by_key(&nbr_pos, |(c, _)| *c)
+                        .unwrap_or(usize::MAX);
+                }
+                neighbors
+            })
+            .collect();
+        Ok(HexMap {
+            nodes,
+            finish_idx,
+            adj,
+        })
     }
     /// Create a map from a named layout.
     pub fn create_named(
@@ -249,12 +270,29 @@ impl HexMap {
         &self,
         coord: AxialCoord,
     ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
-        ALL_DIRECTIONS.iter().filter_map(move |dir| {
-            let neighbor_pos = dir.neighbor_coord(coord);
-            self.node_at(neighbor_pos)
-                .map(|node| (*dir, neighbor_pos, node))
-        })
+        self.neighbors_of_idx(
+            self.nodes
+                .binary_search_by_key(&coord, |(c, _)| *c)
+                .unwrap_or(usize::MAX),
+        )
     }
+    /// Get the neighboring nodes of a given node index.
+    pub fn neighbors_of_idx(
+        &self,
+        idx: usize,
+    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
+        self.adj
+            .get(idx)
+            .unwrap_or(&[usize::MAX; 6])
+            .iter()
+            .enumerate()
+            .filter_map(|(i, idx)| {
+                self.nodes
+                    .get(*idx)
+                    .map(|(nbr_pos, node)| (ALL_DIRECTIONS[i], *nbr_pos, node))
+            })
+    }
+    /// Get the node at a given coordinate.
     pub fn node_at(&self, coord: AxialCoord) -> Option<&Node> {
         match self.nodes.binary_search_by_key(&coord, |(c, _)| *c) {
             Ok(idx) => Some(&self.nodes[idx].1),
