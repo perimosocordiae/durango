@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use serde::{Deserialize, Serialize};
 
 pub fn load_from_csv<T: for<'de> Deserialize<'de>>(
@@ -310,6 +312,39 @@ impl HexMap {
     /// Returns an iterator over all nodes in the map.
     pub fn all_nodes(&self) -> impl Iterator<Item = &(AxialCoord, Node)> {
         self.nodes.iter()
+    }
+    /// Returns a distance (in terms of # hexes, not move cost) for every node.
+    pub fn hexes_to_finish(&self) -> Vec<i32> {
+        // Run BFS from the finish nodes.
+        let mut queue = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, node))| {
+                if node.board_idx == self.finish_idx {
+                    Some((i, 0))
+                } else {
+                    None
+                }
+            })
+            .collect::<VecDeque<(usize, i32)>>();
+        let mut dists = vec![i32::MAX; self.nodes.len()];
+        for &(i, _) in &queue {
+            dists[i] = 0;
+        }
+        while let Some((idx, dist)) = queue.pop_front() {
+            let next_dist = dist + 1;
+            for &nbr_idx in &self.adj[idx] {
+                if let Some(d) = dists.get(nbr_idx)
+                    && *d > next_dist
+                    && self.nodes[nbr_idx].1.cost < 10
+                {
+                    dists[nbr_idx] = next_dist;
+                    queue.push_back((nbr_idx, next_dist));
+                }
+            }
+        }
+        dists
     }
 }
 

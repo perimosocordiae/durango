@@ -76,6 +76,7 @@ fn dump_svg(map: &HexMap, size: f32) {
     let mut min_center = (f32::INFINITY, f32::INFINITY);
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
+    let dists = map.hexes_to_finish();
     for (i, (coord, node)) in map.all_nodes().enumerate() {
         let (cx, cy) = axial_to_center(coord, size);
         if cx < min_center.0 {
@@ -90,16 +91,21 @@ fn dump_svg(map: &HexMap, size: f32) {
         if cy > max_center.1 {
             max_center.1 = cy;
         }
+        // or use node.cost here
+        let label = if node.cost > 10 {
+            "X".into()
+        } else {
+            format!("{} ({})", node.cost, dists[i])
+        };
 
         elements.push(format!(
             "<g id=\"node{i}\" class=\"hex\">
 <polygon points=\"{}\" fill=\"{}\" stroke=\"black\" stroke-width=\"2\" />
-<text x=\"{cx}\" y=\"{cy}\" font-size=\"{}\" dominant-baseline=\"middle\" text-anchor=\"middle\">{}</text>
+<text x=\"{cx}\" y=\"{cy}\" font-size=\"{}\" dominant-baseline=\"middle\" text-anchor=\"middle\">{label}</text>
 </g>",
             axial_to_polygon(coord, size),
             node.color(),
             size / 2.0,
-            node.cost
         ));
     }
 
