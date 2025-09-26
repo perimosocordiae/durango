@@ -138,8 +138,9 @@ impl Player {
         self.discard.append(&mut self.played);
         // Refill the hand for the next turn.
         self.fill_hand(HAND_SIZE, rng);
-        // Reset any unused trashes.
+        // Reset per-turn state.
         self.trashes = 0;
+        self.can_buy = true;
     }
 
     /// Total cards belonging to the player.
