@@ -1,5 +1,8 @@
-use crate::cards::CardAction;
-use crate::data::Terrain;
+use std::cell::OnceCell;
+use std::collections::VecDeque;
+
+use crate::cards::{Card, CardAction};
+use crate::data::{HexDirection, Terrain};
 use crate::game::{
     BuyCardAction, BuyIndex, DrawAction, GameState, MoveAction, PlayerAction,
 };
@@ -178,8 +181,169 @@ impl Agent for RandomAgent {
     }
 }
 
+struct MoveCandidate {
+    node_idx: usize,
+    action: MoveAction,
+}
+
+fn all_free_moves(
+    game: &GameState,
+    card_idx: usize,
+    my_idx: usize,
+) -> impl Iterator<Item = MoveCandidate> {
+    game.map
+        .neighbor_indices(my_idx)
+        .filter_map(move |(nbr_idx, dir)| {
+            let (pos, node) = game.map.nodes.get(nbr_idx)?;
+            if game.is_occupied(*pos) {
+                return None;
+            }
+            match node.terrain {
+                Terrain::Invalid | Terrain::Cave => None,
+                _ => Some(MoveCandidate {
+                    node_idx: nbr_idx,
+                    action: MoveAction {
+                        cards: vec![card_idx],
+                        path: vec![dir],
+                    },
+                }),
+            }
+        })
+}
+
+fn all_moves_for_card<'a>(
+    card: &'a Card,
+    card_idx: usize,
+    game: &'a GameState,
+    my_idx: usize,
+) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
+    // Check for free moves first.
+    if let Some(CardAction::FreeMove) = card.action {
+        return Box::new(all_free_moves(game, card_idx, my_idx));
+    }
+    // Otherwise, we need to consider terrain and cost.
+    let max_move = *card.movement.iter().max().unwrap();
+    struct QueueElem {
+        idx: usize,
+        path: Vec<HexDirection>,
+        cost: [u8; 3],
+    }
+    let mut queue = VecDeque::new();
+    queue.push_back(QueueElem {
+        idx: my_idx,
+        path: Vec::new(),
+        cost: [0u8; 3],
+    });
+    // Track paths for all seen hexes.
+    let mut seen = vec![(my_idx, Vec::<HexDirection>::new())];
+    while let Some(QueueElem { idx, path, cost }) = queue.pop_front() {
+        if path.len() >= max_move as usize {
+            continue;
+        }
+        for (nbr_idx, dir) in game.map.neighbor_indices(idx) {
+            let (pos, node) = game.map.nodes[nbr_idx];
+            if node.cost > max_move {
+                continue;
+            }
+            let terrain_idx = match node.terrain {
+                Terrain::Jungle => 0,
+                Terrain::Desert => 1,
+                Terrain::Water => 2,
+                _ => {
+                    continue;
+                }
+            };
+            if game.is_occupied(pos) {
+                continue;
+            }
+            if seen.iter().any(|(i, _)| *i == nbr_idx) {
+                continue;
+            }
+            let mut new_cost = cost;
+            new_cost[terrain_idx] += node.cost;
+            if new_cost[terrain_idx] > card.movement[terrain_idx] {
+                continue;
+            }
+            if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
+                continue;
+            }
+            let mut new_path = path.clone();
+            new_path.push(dir);
+            seen.push((nbr_idx, new_path.clone()));
+            queue.push_back(QueueElem {
+                idx: nbr_idx,
+                path: new_path,
+                cost: new_cost,
+            });
+        }
+    }
+    // Drop the first seen entry because it's a null move.
+    Box::new(seen.into_iter().skip(1).map(move |(node_idx, path)| {
+        MoveCandidate {
+            node_idx,
+            action: MoveAction {
+                cards: vec![card_idx],
+                path,
+            },
+        }
+    }))
+}
+
+fn best_move_for_node(
+    node_idx: usize,
+    dir: HexDirection,
+    game: &GameState,
+    hand: &[Card],
+) -> Option<MoveCandidate> {
+    let (pos, node) = game.map.nodes[node_idx];
+    if game.is_occupied(pos) {
+        return None;
+    }
+    let mut card_indices: Vec<usize> = match node.terrain {
+        Terrain::Swamp => {
+            // Pick card indices to discard, ordered by value.
+            let mut tmp = hand.iter().enumerate().collect::<Vec<_>>();
+            tmp.sort_unstable_by_key(|(_, card)| {
+                card.movement.iter().max().unwrap()
+            });
+            tmp.into_iter().map(|(i, _)| i).collect()
+        }
+        Terrain::Village => {
+            // Pick card indices to trash, only considering basic movement cards.
+            // TODO: Ideally we'd have a value function that scores each card
+            // in a context-dependent way, but this heuristic is ok for now.
+            hand.iter()
+                .enumerate()
+                .filter_map(|(i, card)| {
+                    if card.movement.iter().sum::<u8>() == 1 {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }
+        _ => {
+            return None;
+        }
+    };
+    if card_indices.len() < node.cost.into() {
+        return None;
+    }
+    card_indices.truncate(node.cost.into());
+    Some(MoveCandidate {
+        node_idx,
+        action: MoveAction {
+            cards: card_indices,
+            path: vec![dir],
+        },
+    })
+}
+
 #[derive(Default)]
-struct GreedyAgent {}
+struct GreedyAgent {
+    hex_dists: OnceCell<Vec<i32>>,
+}
 impl Agent for GreedyAgent {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
         let mut rng = rand::rng();
@@ -212,13 +376,25 @@ impl Agent for GreedyAgent {
             }
         }
 
-        // Try to move as far as possible.
-        // TODO: Use distance to finish instead of path length.
-        let mut valid_moves = valid_move_actions(game);
-        if let Some(max_len) = valid_moves.iter().map(|m| m.path.len()).max() {
-            valid_moves.retain(|m| m.path.len() == max_len);
-            let idx = rng.random_range(0..valid_moves.len());
-            return PlayerAction::Move(valid_moves.swap_remove(idx));
+        // Try to move as close to the finish as possible.
+        let dists = self.hex_dists.get_or_init(|| game.map.hexes_to_finish());
+        let my_idx = game.map.node_idx(me.position).unwrap();
+        // Look at all one-card moves first.
+        let moves = me
+            .hand
+            .iter()
+            .enumerate()
+            .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx));
+        // Now consider any multi-card moves (single-tile only).
+        let moves = moves.chain(game.map.neighbor_indices(my_idx).filter_map(
+            |(nbr_idx, dir)| best_move_for_node(nbr_idx, dir, game, &me.hand),
+        ));
+        // TODO: score moves by some heuristic function instead of just distance
+        // to the finish. Account for value of cards used, etc.
+        if let Some(cand) = moves.min_by_key(|cand| dists[cand.node_idx]) {
+            if dists[cand.node_idx] < dists[my_idx] {
+                return PlayerAction::Move(cand.action);
+            }
         }
 
         // Try to buy the most expensive card possible.
