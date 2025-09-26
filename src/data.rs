@@ -186,7 +186,7 @@ fn load_layout(
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HexMap {
     // Mapping from axial coordinates to nodes, in sorted order.
-    nodes: Vec<(AxialCoord, Node)>,
+    pub nodes: Vec<(AxialCoord, Node)>,
     // Index of the "finish" board.
     finish_idx: u8,
     // Adjacency list, in the same order as nodes.
@@ -283,23 +283,40 @@ impl HexMap {
         &self,
         idx: usize,
     ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
+        self.neighbor_indices(idx).map(|(nbr_idx, dir)| {
+            let (pos, node) = &self.nodes[nbr_idx];
+            (dir, *pos, node)
+        })
+    }
+    /// Get the neighboring node indices of a given node index.
+    pub fn neighbor_indices(
+        &self,
+        idx: usize,
+    ) -> impl Iterator<Item = (usize, HexDirection)> + '_ {
         self.adj
             .get(idx)
             .unwrap_or(&[usize::MAX; 6])
             .iter()
             .enumerate()
-            .filter_map(|(i, idx)| {
-                self.nodes
-                    .get(*idx)
-                    .map(|(nbr_pos, node)| (ALL_DIRECTIONS[i], *nbr_pos, node))
+            .filter_map(|(i, &nbr_idx)| {
+                if nbr_idx < self.nodes.len() {
+                    Some((nbr_idx, ALL_DIRECTIONS[i]))
+                } else {
+                    None
+                }
             })
+    }
+    /// Get the node index of a given coordinate.
+    pub fn node_idx(&self, coord: AxialCoord) -> Option<usize> {
+        self.nodes.binary_search_by_key(&coord, |(c, _)| *c).ok()
     }
     /// Get the node at a given coordinate.
     pub fn node_at(&self, coord: AxialCoord) -> Option<&Node> {
-        match self.nodes.binary_search_by_key(&coord, |(c, _)| *c) {
-            Ok(idx) => Some(&self.nodes[idx].1),
-            Err(_) => None,
-        }
+        self.node_idx(coord).map(|idx| &self.nodes[idx].1)
+    }
+    /// Get the node at a given index.
+    pub fn node_at_idx(&self, idx: usize) -> Option<&Node> {
+        self.nodes.get(idx).map(|(_, node)| node)
     }
     /// Checks if the given coordinate has a node of the given terrain.
     pub fn with_terrain(
