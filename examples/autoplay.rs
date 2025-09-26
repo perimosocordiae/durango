@@ -12,6 +12,10 @@ struct Args {
     actions: usize,
     #[clap(short, long)]
     interactive: bool,
+    #[clap(short, long)]
+    quiet: bool,
+    #[clap(long, default_value_t = 1)]
+    repeats: usize,
 }
 
 fn interactive_action(g: &game::GameState) -> game::PlayerAction {
@@ -39,8 +43,7 @@ fn interactive_action(g: &game::GameState) -> game::PlayerAction {
     }
 }
 
-fn main() {
-    let args = Args::parse();
+fn run_game(args: &Args) {
     let mut g = match game::GameState::new(
         args.players,
         &args.preset,
@@ -55,18 +58,26 @@ fn main() {
     let ais = (0..args.players)
         .map(|i| agent::create_agent(i))
         .collect::<Vec<_>>();
-    for _ in 0..args.actions {
-        println!("{}", g.curr_player().debug_str(g.curr_player_idx));
+    for a in 0..args.actions {
+        if !args.quiet {
+            println!("{}", g.curr_player().debug_str(g.curr_player_idx));
+        }
         let is_user = args.interactive && g.curr_player_idx == 0;
         let act = if is_user {
             interactive_action(&g)
         } else {
             ais[g.curr_player_idx].choose_action(&g)
         };
-        println!(" action: {:?}", &act);
+        if !args.quiet {
+            println!(" action: {:?}", &act);
+        }
         match g.process_action(&act) {
             Ok(true) => {
-                println!("Game over! Winners: {:?}", g.players_at_finish());
+                println!(
+                    "Game over after {} rounds, {a} actions. Finished: {:?}",
+                    g.round_idx,
+                    g.players_at_finish()
+                );
                 break;
             }
             Ok(false) => {}
@@ -77,5 +88,12 @@ fn main() {
                 }
             }
         }
+    }
+}
+
+fn main() {
+    let args = Args::parse();
+    for _ in 0..args.repeats {
+        run_game(&args);
     }
 }
