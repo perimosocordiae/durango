@@ -187,40 +187,40 @@ impl GameState {
             shop: vec![
                 // Scout
                 BuyableCard::regular(2, [2, 0, 0]),
-                // Trailblazer
-                BuyableCard::regular(6, [3, 0, 0]),
                 // Jack of all trades
                 BuyableCard::regular(4, [1, 1, 1]),
                 // Photographer
                 BuyableCard::regular(4, [0, 2, 0]),
+                // Trailblazer
+                BuyableCard::regular(6, [3, 0, 0]),
                 // Treasure chest
                 BuyableCard::single_use(6, [0, 4, 0]),
                 // Transmitter
                 BuyableCard::action(8, CardAction::FreeBuy, true),
             ],
             storage: vec![
-                // Journalist
-                BuyableCard::regular(6, [0, 3, 0]),
-                // Millionaire
-                BuyableCard::regular(10, [0, 4, 0]),
                 // Captain
                 BuyableCard::regular(4, [0, 0, 3]),
-                // Pioneer
-                BuyableCard::regular(10, [5, 0, 0]),
+                // Compass
+                BuyableCard::action(4, CardAction::Draw(3), true),
+                // Journalist
+                BuyableCard::regular(6, [0, 3, 0]),
                 // Giant Machete
                 BuyableCard::single_use(6, [6, 0, 0]),
+                // Travel log
+                BuyableCard::action(6, CardAction::DrawAndTrash(2), true),
                 // Adventurer
                 BuyableCard::regular(8, [2, 2, 2]),
                 // Propeller plane
                 BuyableCard::single_use(8, [4, 4, 4]),
-                // Compass
-                BuyableCard::action(4, CardAction::Draw(3), true),
                 // Cartographer
                 BuyableCard::action(8, CardAction::Draw(2), false),
                 // Scientist
                 BuyableCard::action(8, CardAction::DrawAndTrash(1), false),
-                // Travel log
-                BuyableCard::action(6, CardAction::DrawAndTrash(2), true),
+                // Millionaire
+                BuyableCard::regular(10, [0, 4, 0]),
+                // Pioneer
+                BuyableCard::regular(10, [5, 0, 0]),
                 // Native
                 BuyableCard::action(10, CardAction::FreeMove, false),
             ],
@@ -422,10 +422,13 @@ impl GameState {
             }
             p.hand.clear();
         }
-        // Ensure we only buy one card per turn (exluding free buys).
+        // Ensure we only buy one card per turn (excluding free buys).
         if !is_free_buy {
             self.players[self.curr_player_idx].can_buy = false;
         }
+        // Ensure the shop remains sorted by cost. We only ever remove from
+        // storage, so no need to re-sort that.
+        self.shop.sort_unstable_by_key(|c| c.cost);
         Ok(())
     }
 
