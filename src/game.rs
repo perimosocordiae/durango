@@ -171,13 +171,36 @@ impl GameState {
         rng: &mut impl rand::Rng,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if !(2..=4).contains(&num_players) {
-            return Err("Invalid number of players".into());
+            return Err(
+                format!("Invalid number of players: {num_players}").into()
+            );
         }
         let map = HexMap::create_named(preset)?;
-        let players = (0..num_players)
-            .map(|i| {
-                // TODO: better starting positions
-                let start_pos = AxialCoord { q: i as i32, r: 0 };
+        // Determine starting positions for players.
+        let dists = map.hexes_to_finish();
+        let max_dist = dists
+            .iter()
+            .filter(|&&d| d < i32::MAX)
+            .max()
+            .cloned()
+            .unwrap_or(0);
+        let max_dist_indices = dists
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &d)| if d == max_dist { Some(i) } else { None })
+            .collect::<Vec<usize>>();
+        if max_dist_indices.len() < num_players {
+            return Err(format!(
+                "Not enough distinct starting positions ({} players, but only {} max-dist positions)",
+                num_players,
+                max_dist_indices.len()
+            ).into());
+        }
+        let players = max_dist_indices
+            .into_iter()
+            .take(num_players)
+            .map(|start_idx| {
+                let start_pos = map.nodes[start_idx].0;
                 Player::new(start_pos, rng)
             })
             .collect();

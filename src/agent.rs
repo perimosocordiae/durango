@@ -391,10 +391,10 @@ impl Agent for GreedyAgent {
         ));
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
-        if let Some(cand) = moves.min_by_key(|cand| dists[cand.node_idx]) {
-            if dists[cand.node_idx] < dists[my_idx] {
-                return PlayerAction::Move(cand.action);
-            }
+        if let Some(cand) = moves.min_by_key(|cand| dists[cand.node_idx])
+            && dists[cand.node_idx] < dists[my_idx]
+        {
+            return PlayerAction::Move(cand.action);
         }
 
         // Try to buy the most expensive card possible.
