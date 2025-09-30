@@ -192,6 +192,11 @@ pub struct HexMap {
     // Adjacency list, in the same order as nodes.
     #[serde(skip)]
     adj: Vec<[usize; 6]>,
+    // Distances to any finish hex.
+    #[serde(skip)]
+    pub dists: Vec<i32>,
+    #[serde(skip)]
+    pub max_dist: i32,
 }
 
 impl HexMap {
@@ -236,24 +241,20 @@ impl HexMap {
             }
         }
         let finish_idx = (layout.len() - 1) as u8;
-        // Build the adjacency list
-        let adj = nodes
+        let adj = create_adjacencies(&nodes);
+        let dists = create_hex_distances(&nodes, &adj, finish_idx);
+        let max_dist = dists
             .iter()
-            .map(|(pos, _)| {
-                let mut neighbors = [0; 6];
-                for (i, dir) in ALL_DIRECTIONS.iter().enumerate() {
-                    let nbr_pos = dir.neighbor_coord(*pos);
-                    neighbors[i] = nodes
-                        .binary_search_by_key(&nbr_pos, |(c, _)| *c)
-                        .unwrap_or(usize::MAX);
-                }
-                neighbors
-            })
-            .collect();
+            .filter(|&&d| d < i32::MAX)
+            .max()
+            .cloned()
+            .unwrap_or(0);
         Ok(HexMap {
             nodes,
             finish_idx,
             adj,
+            dists,
+            max_dist,
         })
     }
     /// Create a map from a named layout.
@@ -330,39 +331,59 @@ impl HexMap {
     pub fn all_nodes(&self) -> impl Iterator<Item = &(AxialCoord, Node)> {
         self.nodes.iter()
     }
-    /// Returns a distance (in terms of # hexes, not move cost) for every node.
-    pub fn hexes_to_finish(&self) -> Vec<i32> {
-        // Run BFS from the finish nodes.
-        let mut queue = self
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(i, (_, node))| {
-                if node.board_idx == self.finish_idx {
-                    Some((i, 0))
-                } else {
-                    None
-                }
-            })
-            .collect::<VecDeque<(usize, i32)>>();
-        let mut dists = vec![i32::MAX; self.nodes.len()];
-        for &(i, _) in &queue {
-            dists[i] = 0;
-        }
-        while let Some((idx, dist)) = queue.pop_front() {
-            let next_dist = dist + 1;
-            for &nbr_idx in &self.adj[idx] {
-                if let Some(d) = dists.get(nbr_idx)
-                    && *d > next_dist
-                    && self.nodes[nbr_idx].1.cost < 10
-                {
-                    dists[nbr_idx] = next_dist;
-                    queue.push_back((nbr_idx, next_dist));
-                }
+}
+
+fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
+    return nodes
+        .iter()
+        .map(|(pos, _)| {
+            let mut neighbors = [0; 6];
+            for (i, dir) in ALL_DIRECTIONS.iter().enumerate() {
+                let nbr_pos = dir.neighbor_coord(*pos);
+                neighbors[i] = nodes
+                    .binary_search_by_key(&nbr_pos, |(c, _)| *c)
+                    .unwrap_or(usize::MAX);
+            }
+            neighbors
+        })
+        .collect();
+}
+
+/// Returns a distance (in terms of # hexes, not move cost) for every node.
+fn create_hex_distances(
+    nodes: &[(AxialCoord, Node)],
+    adj: &[[usize; 6]],
+    finish_idx: u8,
+) -> Vec<i32> {
+    // Run BFS from the finish nodes.
+    let mut queue = nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (_, node))| {
+            if node.board_idx == finish_idx {
+                Some((i, 0))
+            } else {
+                None
+            }
+        })
+        .collect::<VecDeque<(usize, i32)>>();
+    let mut dists = vec![i32::MAX; nodes.len()];
+    for &(i, _) in &queue {
+        dists[i] = 0;
+    }
+    while let Some((idx, dist)) = queue.pop_front() {
+        let next_dist = dist + 1;
+        for &nbr_idx in &adj[idx] {
+            if let Some(d) = dists.get(nbr_idx)
+                && *d > next_dist
+                && nodes[nbr_idx].1.cost < 10
+            {
+                dists[nbr_idx] = next_dist;
+                queue.push_back((nbr_idx, next_dist));
             }
         }
-        dists
     }
+    dists
 }
 
 #[cfg(test)]

@@ -1,4 +1,3 @@
-use std::cell::OnceCell;
 use std::collections::VecDeque;
 
 use crate::cards::{Card, CardAction};
@@ -341,9 +340,7 @@ fn best_move_for_node(
 }
 
 #[derive(Default)]
-struct GreedyAgent {
-    hex_dists: OnceCell<Vec<i32>>,
-}
+struct GreedyAgent {}
 impl Agent for GreedyAgent {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
         let mut rng = rand::rng();
@@ -377,7 +374,6 @@ impl Agent for GreedyAgent {
         }
 
         // Try to move as close to the finish as possible.
-        let dists = self.hex_dists.get_or_init(|| game.map.hexes_to_finish());
         let my_idx = game.map.node_idx(me.position).unwrap();
         // Look at all one-card moves first.
         let moves = me
@@ -391,6 +387,7 @@ impl Agent for GreedyAgent {
         ));
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
+        let dists = &game.map.dists;
         if let Some(cand) = moves.min_by_key(|cand| dists[cand.node_idx])
             && dists[cand.node_idx] < dists[my_idx]
         {

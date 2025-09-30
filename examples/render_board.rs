@@ -76,7 +76,6 @@ fn dump_svg(map: &HexMap, size: f32) {
     let mut min_center = (f32::INFINITY, f32::INFINITY);
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
-    let dists = map.hexes_to_finish();
     for (i, (coord, node)) in map.all_nodes().enumerate() {
         let (cx, cy) = axial_to_center(coord, size);
         if cx < min_center.0 {
@@ -95,7 +94,7 @@ fn dump_svg(map: &HexMap, size: f32) {
         let label = if node.cost > 10 {
             "X".into()
         } else {
-            format!("{} ({})", node.cost, dists[i])
+            format!("{} ({})", node.cost, map.dists[i])
         };
 
         elements.push(format!(

@@ -177,17 +177,13 @@ impl GameState {
         }
         let map = HexMap::create_named(preset)?;
         // Determine starting positions for players.
-        let dists = map.hexes_to_finish();
-        let max_dist = dists
-            .iter()
-            .filter(|&&d| d < i32::MAX)
-            .max()
-            .cloned()
-            .unwrap_or(0);
-        let max_dist_indices = dists
+        let max_dist_indices = map
+            .dists
             .iter()
             .enumerate()
-            .filter_map(|(i, &d)| if d == max_dist { Some(i) } else { None })
+            .filter_map(
+                |(i, &d)| if d == map.max_dist { Some(i) } else { None },
+            )
             .collect::<Vec<usize>>();
         if max_dist_indices.len() < num_players {
             return Err(format!(
@@ -300,12 +296,16 @@ impl GameState {
         self.players
             .iter()
             .map(|p| {
-                if !self.map.is_finish(p.position) {
-                    return 0;
+                let pos_idx = self.map.node_idx(p.position).unwrap();
+                let d = self.map.dists[pos_idx];
+                if d != 0 {
+                    // Non-finished players score by how close
+                    // they got to the finish.
+                    return self.map.max_dist - d;
                 }
                 // TODO: break ties based on broken barriers, once
                 // barriers are included in the game.
-                1
+                self.map.max_dist + 1000
             })
             .collect()
     }
