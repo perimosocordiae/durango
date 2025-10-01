@@ -1,5 +1,5 @@
 use clap::Parser;
-use durango::data::{self, AxialCoord};
+use durango::data::{self, AxialCoord, HexGraph};
 use durango::data::{HexMap, LayoutInfo, Terrain};
 
 // Usage:
@@ -25,7 +25,7 @@ fn coord_to_string(coord: &AxialCoord) -> String {
     format!("q{}r{}", coord.q + 1000, coord.r + 1000)
 }
 
-fn dump_dot(map: &HexMap) {
+fn dump_dot(map: &HexMap, graph: &HexGraph) {
     println!("digraph {{");
     println!("  overlap=false;");
     println!("  node [style=filled];");
@@ -40,7 +40,8 @@ fn dump_dot(map: &HexMap) {
             node.cost,
             node.color()
         );
-        for (_, next_pos, neighbor) in map.neighbors_of_idx(i) {
+        for (idx, _) in graph.neighbor_indices(i) {
+            let (next_pos, neighbor) = map.nodes[idx];
             if !matches!(neighbor.terrain, Terrain::Invalid) {
                 println!(
                     "  {} -> {}",
@@ -72,7 +73,7 @@ fn axial_to_polygon(pos: &AxialCoord, size: f32) -> String {
     points.join(" ")
 }
 
-fn dump_svg(map: &HexMap, size: f32) {
+fn dump_svg(map: &HexMap, graph: &HexGraph, size: f32) {
     let mut min_center = (f32::INFINITY, f32::INFINITY);
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
@@ -94,7 +95,7 @@ fn dump_svg(map: &HexMap, size: f32) {
         let label = if node.cost > 10 {
             "X".into()
         } else {
-            format!("{} ({})", node.cost, map.dists[i])
+            format!("{} ({})", node.cost, graph.dists[i])
         };
 
         elements.push(format!(
@@ -134,10 +135,11 @@ fn render(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
             HexMap::create_custom(&layout)
         }
     }?;
+    let graph = HexGraph::new(&map);
     if args.format == "dot" {
-        dump_dot(&map);
+        dump_dot(&map, &graph);
     } else if args.format == "svg" {
-        dump_svg(&map, 30.0);
+        dump_svg(&map, &graph, 30.0);
     } else if args.format == "raw" {
         for (coord, node) in map.all_nodes() {
             println!("{:?} {:?} {}", coord, node.terrain, node.cost);

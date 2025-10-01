@@ -23,7 +23,7 @@ pub fn create_agent(difficulty: usize) -> Box<dyn Agent + Send> {
 fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     let mut valid_moves = Vec::new();
     let me = game.curr_player();
-    for (dir, pos, node) in game.map.neighbors_of(me.position) {
+    for (dir, pos, node) in game.neighbors_of(me.position) {
         if game.is_occupied(pos) {
             continue;
         }
@@ -190,7 +190,7 @@ fn all_free_moves(
     card_idx: usize,
     my_idx: usize,
 ) -> impl Iterator<Item = MoveCandidate> {
-    game.map
+    game.graph
         .neighbor_indices(my_idx)
         .filter_map(move |(nbr_idx, dir)| {
             let (pos, node) = game.map.nodes.get(nbr_idx)?;
@@ -239,7 +239,7 @@ fn all_moves_for_card<'a>(
         if path.len() >= max_move as usize {
             continue;
         }
-        for (nbr_idx, dir) in game.map.neighbor_indices(idx) {
+        for (nbr_idx, dir) in game.graph.neighbor_indices(idx) {
             let (pos, node) = game.map.nodes[nbr_idx];
             if node.cost > max_move {
                 continue;
@@ -382,12 +382,15 @@ impl Agent for GreedyAgent {
             .enumerate()
             .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx));
         // Now consider any multi-card moves (single-tile only).
-        let moves = moves.chain(game.map.neighbor_indices(my_idx).filter_map(
-            |(nbr_idx, dir)| best_move_for_node(nbr_idx, dir, game, &me.hand),
-        ));
+        let moves =
+            moves.chain(game.graph.neighbor_indices(my_idx).filter_map(
+                |(nbr_idx, dir)| {
+                    best_move_for_node(nbr_idx, dir, game, &me.hand)
+                },
+            ));
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
-        let dists = &game.map.dists;
+        let dists = &game.graph.dists;
         if let Some(cand) = moves.min_by_key(|cand| dists[cand.node_idx])
             && dists[cand.node_idx] < dists[my_idx]
         {

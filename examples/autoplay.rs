@@ -24,7 +24,7 @@ fn interactive_action(g: &game::GameState) -> game::PlayerAction {
         for (idx, card) in g.curr_player().hand.iter().enumerate() {
             println!("  Card {}: {:?}", idx, card);
         }
-        for (dir, pos, node) in g.map.neighbors_of(g.curr_player().position) {
+        for (dir, pos, node) in g.neighbors_of(g.curr_player().position) {
             println!("  Move to {:?} at {:?} via {:?}", node.terrain, pos, dir);
         }
         print!("Enter action: ");

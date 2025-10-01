@@ -189,14 +189,52 @@ pub struct HexMap {
     pub nodes: Vec<(AxialCoord, Node)>,
     // Index of the "finish" board.
     finish_idx: u8,
-    // Adjacency list, in the same order as nodes.
-    #[serde(skip)]
+}
+
+#[derive(Default, Clone)]
+pub struct HexGraph {
+    // Adjacency list, in the same order as map.nodes.
     adj: Vec<[usize; 6]>,
     // Distances to any finish hex.
-    #[serde(skip)]
     pub dists: Vec<i32>,
-    #[serde(skip)]
+    // Max valid distance in `dists`.
     pub max_dist: i32,
+}
+
+impl HexGraph {
+    pub fn new(map: &HexMap) -> Self {
+        let adj = create_adjacencies(&map.nodes);
+        let dists = create_hex_distances(&map.nodes, &adj, map.finish_idx);
+        let max_dist = dists
+            .iter()
+            .filter(|&&d| d < i32::MAX)
+            .max()
+            .cloned()
+            .unwrap_or(0);
+        Self {
+            adj,
+            dists,
+            max_dist,
+        }
+    }
+    /// Get the neighboring node indices of a given node index.
+    pub fn neighbor_indices(
+        &self,
+        idx: usize,
+    ) -> impl Iterator<Item = (usize, HexDirection)> + '_ {
+        self.adj
+            .get(idx)
+            .unwrap_or(&[usize::MAX; 6])
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &nbr_idx)| {
+                if nbr_idx < self.adj.len() {
+                    Some((nbr_idx, ALL_DIRECTIONS[i]))
+                } else {
+                    None
+                }
+            })
+    }
 }
 
 impl HexMap {
@@ -241,21 +279,7 @@ impl HexMap {
             }
         }
         let finish_idx = (layout.len() - 1) as u8;
-        let adj = create_adjacencies(&nodes);
-        let dists = create_hex_distances(&nodes, &adj, finish_idx);
-        let max_dist = dists
-            .iter()
-            .filter(|&&d| d < i32::MAX)
-            .max()
-            .cloned()
-            .unwrap_or(0);
-        Ok(HexMap {
-            nodes,
-            finish_idx,
-            adj,
-            dists,
-            max_dist,
-        })
+        Ok(HexMap { nodes, finish_idx })
     }
     /// Create a map from a named layout.
     pub fn create_named(
@@ -267,45 +291,6 @@ impl HexMap {
     /// Check if the given coordinate is a finish node.
     pub fn is_finish(&self, coord: AxialCoord) -> bool {
         self.node_at(coord).map(|n| n.board_idx) == Some(self.finish_idx)
-    }
-    /// Get the neighboring nodes of a given coordinate.
-    pub fn neighbors_of(
-        &self,
-        coord: AxialCoord,
-    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
-        self.neighbors_of_idx(
-            self.nodes
-                .binary_search_by_key(&coord, |(c, _)| *c)
-                .unwrap_or(usize::MAX),
-        )
-    }
-    /// Get the neighboring nodes of a given node index.
-    pub fn neighbors_of_idx(
-        &self,
-        idx: usize,
-    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
-        self.neighbor_indices(idx).map(|(nbr_idx, dir)| {
-            let (pos, node) = &self.nodes[nbr_idx];
-            (dir, *pos, node)
-        })
-    }
-    /// Get the neighboring node indices of a given node index.
-    pub fn neighbor_indices(
-        &self,
-        idx: usize,
-    ) -> impl Iterator<Item = (usize, HexDirection)> + '_ {
-        self.adj
-            .get(idx)
-            .unwrap_or(&[usize::MAX; 6])
-            .iter()
-            .enumerate()
-            .filter_map(|(i, &nbr_idx)| {
-                if nbr_idx < self.nodes.len() {
-                    Some((nbr_idx, ALL_DIRECTIONS[i]))
-                } else {
-                    None
-                }
-            })
     }
     /// Get the node index of a given coordinate.
     pub fn node_idx(&self, coord: AxialCoord) -> Option<usize> {
@@ -334,7 +319,7 @@ impl HexMap {
 }
 
 fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
-    return nodes
+    nodes
         .iter()
         .map(|(pos, _)| {
             let mut neighbors = [0; 6];
@@ -346,7 +331,7 @@ fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
             }
             neighbors
         })
-        .collect();
+        .collect()
 }
 
 /// Returns a distance (in terms of # hexes, not move cost) for every node.
@@ -423,41 +408,16 @@ mod tests {
             LayoutInfo::new('C', 0, 3, -7),
         ])
         .unwrap();
-        let nbrs = map
-            .neighbors_of(AxialCoord { q: 0, r: 0 })
-            .collect::<Vec<_>>();
+        let idx = map.node_idx(AxialCoord { q: 0, r: 0 }).unwrap();
+        assert_eq!(idx, 22);
+        let graph = HexGraph::new(&map);
+        let nbrs = graph.neighbor_indices(idx).collect::<Vec<_>>();
         assert_eq!(nbrs.len(), 6);
-        assert_matches!(
-            nbrs[0],
-            (
-                HexDirection::NorthEast,
-                AxialCoord { q: 1, r: -1 },
-                Node {
-                    terrain: Terrain::Jungle,
-                    cost: 1,
-                    board_idx: 0
-                }
-            )
-        );
-        assert_matches!(
-            nbrs[1],
-            (HexDirection::East, AxialCoord { q: 1, r: 0 }, _)
-        );
-        assert_matches!(
-            nbrs[2],
-            (HexDirection::SouthEast, AxialCoord { q: 0, r: 1 }, _)
-        );
-        assert_matches!(
-            nbrs[3],
-            (HexDirection::SouthWest, AxialCoord { q: -1, r: 1 }, _)
-        );
-        assert_matches!(
-            nbrs[4],
-            (HexDirection::West, AxialCoord { q: -1, r: 0 }, _)
-        );
-        assert_matches!(
-            nbrs[5],
-            (HexDirection::NorthWest, AxialCoord { q: 0, r: -1 }, _)
-        );
+        assert_matches!(nbrs[0], (33, HexDirection::NorthEast));
+        assert_matches!(nbrs[1], (34, HexDirection::East));
+        assert_matches!(nbrs[2], (23, HexDirection::SouthEast));
+        assert_matches!(nbrs[3], (12, HexDirection::SouthWest));
+        assert_matches!(nbrs[4], (11, HexDirection::West));
+        assert_matches!(nbrs[5], (21, HexDirection::NorthWest));
     }
 }

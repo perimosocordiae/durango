@@ -1,5 +1,5 @@
 use crate::cards::{BuyableCard, Card, CardAction};
-use crate::data::{AxialCoord, HexDirection, HexMap, Terrain};
+use crate::data::{AxialCoord, HexDirection, HexGraph, HexMap, Node, Terrain};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,8 @@ pub struct Player {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GameState {
     pub map: HexMap,
+    #[serde(skip)]
+    pub graph: HexGraph,
     pub players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
@@ -176,13 +178,14 @@ impl GameState {
             );
         }
         let map = HexMap::create_named(preset)?;
+        let graph = HexGraph::new(&map);
         // Determine starting positions for players.
-        let max_dist_indices = map
+        let max_dist_indices = graph
             .dists
             .iter()
             .enumerate()
             .filter_map(
-                |(i, &d)| if d == map.max_dist { Some(i) } else { None },
+                |(i, &d)| if d == graph.max_dist { Some(i) } else { None },
             )
             .collect::<Vec<usize>>();
         if max_dist_indices.len() < num_players {
@@ -202,6 +205,7 @@ impl GameState {
             .collect();
         Ok(Self {
             map,
+            graph,
             players,
             shop: vec![
                 // Scout
@@ -297,15 +301,15 @@ impl GameState {
             .iter()
             .map(|p| {
                 let pos_idx = self.map.node_idx(p.position).unwrap();
-                let d = self.map.dists[pos_idx];
+                let d = self.graph.dists[pos_idx];
                 if d != 0 {
                     // Non-finished players score by how close
                     // they got to the finish.
-                    return self.map.max_dist - d;
+                    return self.graph.max_dist - d;
                 }
                 // TODO: break ties based on broken barriers, once
                 // barriers are included in the game.
-                self.map.max_dist + 1000
+                self.graph.max_dist + 1000
             })
             .collect()
     }
@@ -641,6 +645,29 @@ impl GameState {
         }
         // TODO: check that we have enough bonuses in the cave.
         todo!("Implement cave bonuses")
+    }
+
+    /// Get the neighboring nodes of a given node index.
+    pub fn neighbors_of_idx(
+        &self,
+        idx: usize,
+    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
+        self.graph.neighbor_indices(idx).map(|(nbr_idx, dir)| {
+            let (pos, node) = &self.map.nodes[nbr_idx];
+            (dir, *pos, node)
+        })
+    }
+    /// Get the neighboring nodes of a given coordinate.
+    pub fn neighbors_of(
+        &self,
+        coord: AxialCoord,
+    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
+        self.neighbors_of_idx(
+            self.map
+                .nodes
+                .binary_search_by_key(&coord, |(c, _)| *c)
+                .unwrap_or(usize::MAX),
+        )
     }
 }
 
