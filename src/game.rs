@@ -1,4 +1,4 @@
-use crate::cards::{BuyableCard, CardAction};
+use crate::cards::{BuyableCard, Card, CardAction};
 use crate::data::{AxialCoord, HexDirection, HexMap, Node, Terrain};
 use crate::graph::HexGraph;
 use crate::player::Player;
@@ -42,6 +42,20 @@ pub enum PlayerAction {
     Trash(TrashAction),
     Discard(Vec<usize>),
     FinishTurn,
+}
+
+/// A view of the game state for a specific player.
+#[derive(Serialize)]
+pub struct PlayerView<'a> {
+    map: &'a HexMap,
+    player: &'a Player,
+    positions: Vec<AxialCoord>,
+    hand: &'a [Card],
+    shop: &'a [BuyableCard],
+    storage: &'a [BuyableCard],
+    round_idx: usize,
+    curr_player_idx: usize,
+    winner: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -155,6 +169,30 @@ impl GameState {
     /// Positions of all players in the game.
     pub fn player_positions(&self) -> Vec<AxialCoord> {
         self.players.iter().map(|p| p.position).collect()
+    }
+
+    /// Returns a view of the game state for the specified player.
+    pub fn view_for_player(&'_ self, player_idx: usize) -> PlayerView<'_> {
+        let winner = if self.is_game_over() {
+            self.player_scores()
+                .iter()
+                .enumerate()
+                .max_by_key(|&(_, score)| score)
+                .map(|(i, _)| i)
+        } else {
+            None
+        };
+        PlayerView {
+            map: &self.map,
+            player: &self.players[player_idx],
+            positions: self.player_positions(),
+            hand: &self.players[player_idx].hand,
+            shop: &self.shop,
+            storage: &self.storage,
+            round_idx: self.round_idx,
+            curr_player_idx: self.curr_player_idx,
+            winner,
+        }
     }
 
     /// Is the specified node occupied by a player other than the current player?
