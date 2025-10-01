@@ -1,6 +1,6 @@
 use clap::Parser;
-use durango::data::{self, AxialCoord, HexGraph};
-use durango::data::{HexMap, LayoutInfo, Terrain};
+use durango::data::{self, AxialCoord, HexMap, LayoutInfo, Terrain};
+use durango::graph::HexGraph;
 
 // Usage:
 // cargo run --example render_board -- -f dot | neato -Tsvg | display
