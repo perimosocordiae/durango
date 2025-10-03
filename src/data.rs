@@ -183,6 +183,12 @@ fn load_layout(
         "medium2" => {
             load_from_csv::<LayoutInfo>(include_str!("../layouts/medium2.csv"))
         }
+        "hard1" => {
+            load_from_csv::<LayoutInfo>(include_str!("../layouts/hard1.csv"))
+        }
+        "hard2" => {
+            load_from_csv::<LayoutInfo>(include_str!("../layouts/hard2.csv"))
+        }
         _ => Err("Unknown layout".into()),
     }
 }
