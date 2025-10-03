@@ -171,6 +171,9 @@ fn load_layout(
     name: &str,
 ) -> Result<Vec<LayoutInfo>, Box<dyn std::error::Error>> {
     match name {
+        "first" => {
+            load_from_csv::<LayoutInfo>(include_str!("../layouts/first.csv"))
+        }
         "easy1" => {
             load_from_csv::<LayoutInfo>(include_str!("../layouts/easy1.csv"))
         }
