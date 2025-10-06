@@ -94,6 +94,20 @@ pub enum Terrain {
     Cave,    // Get a bonus
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum BonusToken {
+    Jungle(usize),
+    Desert(usize),
+    Water(usize),
+    DrawCard,
+    TrashCard,
+    ReplaceHand,
+    DoubleUse,
+    ShareHex,
+    FreeMove,
+    SwapSymbol(usize),
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Node {
     pub terrain: Terrain,

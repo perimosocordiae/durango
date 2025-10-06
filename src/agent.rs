@@ -34,49 +34,40 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
             Terrain::Jungle => {
                 for (i, card) in me.hand.iter().enumerate() {
                     if card.movement[0] >= node.cost {
-                        valid_moves.push(MoveAction {
-                            cards: vec![i],
-                            path: vec![dir],
-                        });
+                        valid_moves.push(MoveAction::single_card(i, vec![dir]));
                     }
                 }
             }
             Terrain::Desert => {
                 for (i, card) in me.hand.iter().enumerate() {
                     if card.movement[1] >= node.cost {
-                        valid_moves.push(MoveAction {
-                            cards: vec![i],
-                            path: vec![dir],
-                        });
+                        valid_moves.push(MoveAction::single_card(i, vec![dir]));
                     }
                 }
             }
             Terrain::Water => {
                 for (i, card) in me.hand.iter().enumerate() {
                     if card.movement[2] >= node.cost {
-                        valid_moves.push(MoveAction {
-                            cards: vec![i],
-                            path: vec![dir],
-                        });
+                        valid_moves.push(MoveAction::single_card(i, vec![dir]));
                     }
                 }
             }
             Terrain::Swamp => {
                 // TODO: generate all length-cost combinations of cards.
                 if me.hand.len() >= node.cost as usize {
-                    valid_moves.push(MoveAction {
-                        cards: (0..node.cost as usize).collect(),
-                        path: vec![dir],
-                    });
+                    valid_moves.push(MoveAction::multi_card(
+                        (0..node.cost as usize).collect(),
+                        dir,
+                    ));
                 }
             }
             Terrain::Village => {
                 // TODO: generate all length-cost combinations of cards.
                 if me.num_cards() > 4 && me.hand.len() >= node.cost as usize {
-                    valid_moves.push(MoveAction {
-                        cards: (0..node.cost as usize).collect(),
-                        path: vec![dir],
-                    });
+                    valid_moves.push(MoveAction::multi_card(
+                        (0..node.cost as usize).collect(),
+                        dir,
+                    ));
                 }
             }
         }
@@ -96,12 +87,14 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
                 .enumerate()
                 .map(|(j, _)| BuyCardAction {
                     cards: vec![i],
+                    tokens: vec![],
                     index: BuyIndex::Shop(j),
                 })
                 .collect();
             buys.extend(game.storage.iter().enumerate().map(|(j, _)| {
                 BuyCardAction {
                     cards: vec![i],
+                    tokens: vec![],
                     index: BuyIndex::Storage(j),
                 }
             }));
@@ -120,6 +113,7 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
         .filter(|(_, c)| c.cost <= cash)
         .map(|(i, _)| BuyCardAction {
             cards: (0..hand.len()).collect(),
+            tokens: vec![],
             index: BuyIndex::Shop(i),
         })
         .collect();
@@ -131,6 +125,7 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
                 .filter(|(_, c)| c.cost <= cash)
                 .map(|(i, _)| BuyCardAction {
                     cards: (0..hand.len()).collect(),
+                    tokens: vec![],
                     index: BuyIndex::Storage(i),
                 }),
         );
@@ -145,7 +140,7 @@ fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
         .enumerate()
         .filter_map(|(i, c)| match c.action {
             Some(CardAction::Draw(_)) | Some(CardAction::DrawAndTrash(_)) => {
-                Some(DrawAction { card: i })
+                Some(DrawAction::Card(i))
             }
             _ => None,
         })
@@ -201,10 +196,7 @@ fn all_free_moves(
                 Terrain::Invalid | Terrain::Cave => None,
                 _ => Some(MoveCandidate {
                     node_idx: nbr_idx,
-                    action: MoveAction {
-                        cards: vec![card_idx],
-                        path: vec![dir],
-                    },
+                    action: MoveAction::single_card(card_idx, vec![dir]),
                 }),
             }
         })
@@ -280,10 +272,7 @@ fn all_moves_for_card<'a>(
     Box::new(seen.into_iter().skip(1).map(move |(node_idx, path)| {
         MoveCandidate {
             node_idx,
-            action: MoveAction {
-                cards: vec![card_idx],
-                path,
-            },
+            action: MoveAction::single_card(card_idx, path),
         }
     }))
 }
@@ -332,10 +321,7 @@ fn best_move_for_node(
     card_indices.truncate(node.cost.into());
     Some(MoveCandidate {
         node_idx,
-        action: MoveAction {
-            cards: card_indices,
-            path: vec![dir],
-        },
+        action: MoveAction::multi_card(card_indices, dir),
     })
 }
 
@@ -414,6 +400,7 @@ impl Agent for GreedyAgent {
                 .filter(|(_, c)| c.cost == max_cost)
                 .map(|(i, _)| BuyCardAction {
                     cards: (0..hand_len).collect(),
+                    tokens: vec![],
                     index: BuyIndex::Shop(i),
                 })
                 .collect();
@@ -425,6 +412,7 @@ impl Agent for GreedyAgent {
                         .filter(|(_, c)| c.cost == max_cost)
                         .map(|(i, _)| BuyCardAction {
                             cards: (0..hand_len).collect(),
+                            tokens: vec![],
                             index: BuyIndex::Storage(i),
                         }),
                 );

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
 
+/// Index of a buyable card in the shop or storage.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum BuyIndex {
     Shop(usize),
@@ -15,23 +16,37 @@ pub enum BuyIndex {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BuyCardAction {
     pub cards: Vec<usize>,
+    pub tokens: Vec<usize>,
     pub index: BuyIndex,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MoveAction {
     pub cards: Vec<usize>,
+    pub tokens: Vec<usize>,
     pub path: Vec<HexDirection>,
 }
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DrawAction {
-    pub card: usize,
+impl MoveAction {
+    pub fn single_card(card: usize, path: Vec<HexDirection>) -> Self {
+        Self {
+            cards: vec![card],
+            tokens: vec![],
+            path,
+        }
+    }
+    pub fn multi_card(cards: Vec<usize>, dir: HexDirection) -> Self {
+        Self {
+            cards,
+            tokens: vec![],
+            path: vec![dir],
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TrashAction {
-    pub cards: Vec<usize>,
+pub enum DrawAction {
+    Card(usize),
+    Token(usize),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -39,7 +54,7 @@ pub enum PlayerAction {
     BuyCard(BuyCardAction),
     Move(MoveAction),
     Draw(DrawAction),
-    Trash(TrashAction),
+    Trash(Vec<usize>),
     Discard(Vec<usize>),
     FinishTurn,
 }
@@ -523,37 +538,43 @@ impl GameState {
     ) -> Result<(), String> {
         let hand = &self.curr_player().hand;
         let hand_size = hand.len();
-        let card = hand.get(draw.card).ok_or(format!(
-            "Invalid card index {}, given {hand_size} cards in hand",
-            draw.card
-        ))?;
-        let is_single_use = card.single_use;
-        match card.action {
-            Some(CardAction::Draw(n)) => {
-                self.players[self.curr_player_idx]
-                    .fill_hand(hand_size + n, rng);
+        match draw {
+            DrawAction::Card(i) => {
+                let card = hand.get(*i).ok_or(format!(
+                    "Invalid card index {i}, given {hand_size} cards in hand"
+                ))?;
+                let is_single_use = card.single_use;
+                match card.action {
+                    Some(CardAction::Draw(n)) => {
+                        self.players[self.curr_player_idx]
+                            .fill_hand(hand_size + n, rng);
+                    }
+                    Some(CardAction::DrawAndTrash(n)) => {
+                        self.players[self.curr_player_idx]
+                            .fill_hand(hand_size + n, rng);
+                        self.players[self.curr_player_idx].trashes += n;
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Cannot use card {card:?} to draw more cards"
+                        ));
+                    }
+                }
+                if is_single_use {
+                    self.players[self.curr_player_idx].trash_cards(&[*i]);
+                } else {
+                    self.players[self.curr_player_idx].mark_played(&[*i]);
+                }
             }
-            Some(CardAction::DrawAndTrash(n)) => {
-                self.players[self.curr_player_idx]
-                    .fill_hand(hand_size + n, rng);
-                self.players[self.curr_player_idx].trashes += n;
+            DrawAction::Token(i) => {
+                todo!("Use token {i} to draw a card")
             }
-            _ => {
-                return Err(format!(
-                    "Cannot use card {card:?} to draw more cards"
-                ));
-            }
-        }
-        if is_single_use {
-            self.players[self.curr_player_idx].trash_cards(&[draw.card]);
-        } else {
-            self.players[self.curr_player_idx].mark_played(&[draw.card]);
         }
         Ok(())
     }
 
-    fn handle_trash(&mut self, trash: &TrashAction) -> Result<(), String> {
-        let num_to_trash = trash.cards.len();
+    fn handle_trash(&mut self, trash: &[usize]) -> Result<(), String> {
+        let num_to_trash = trash.len();
         let num_allowed = self.curr_player().trashes;
         if num_to_trash > num_allowed {
             return Err(format!(
@@ -561,7 +582,7 @@ impl GameState {
                 num_to_trash, num_allowed,
             ));
         }
-        self.players[self.curr_player_idx].trash_cards(&trash.cards);
+        self.players[self.curr_player_idx].trash_cards(trash);
         self.players[self.curr_player_idx].trashes -= num_to_trash;
         Ok(())
     }
