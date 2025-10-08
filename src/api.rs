@@ -153,9 +153,14 @@ impl GameAPI for DurangoAPI {
         self.view(player_idx)
     }
 
-    fn start<F: FnMut(&str, &str)>(&mut self, mut notice_cb: F) -> Result<()> {
+    fn start<F: FnMut(&str, &str)>(
+        &mut self,
+        game_id: i64,
+        mut notice_cb: F,
+    ) -> Result<()> {
+        let msg = format!(r#"{{"action": "start", "game_id": {game_id}}}"#);
         for idx in self.human_player_idxs() {
-            notice_cb(self.player_ids[idx].as_str(), r#"{"action": "start"}"#);
+            notice_cb(self.player_ids[idx].as_str(), &msg);
         }
         // Advance to wait for the next player action.
         self.process_agents(notice_cb)?;
@@ -176,6 +181,14 @@ impl GameAPI for DurangoAPI {
         self.process_agents(&mut notice_cb)?;
         Ok(())
     }
+
+    fn current_player_id(&self) -> &str {
+        self.player_ids[self.state.curr_player_idx].as_str()
+    }
+
+    fn player_scores(&self) -> Vec<i32> {
+        self.state.player_scores()
+    }
 }
 
 #[test]
@@ -186,9 +199,9 @@ fn exercise_api() {
     ];
     let mut game: DurangoAPI =
         GameAPI::init(&players, Some(r#"{"named_layout": "first"}"#)).unwrap();
-    game.start(|id, msg| {
+    game.start(1234, |id, msg| {
         assert_eq!(id, "foo");
-        assert_eq!(msg, "{\"action\": \"start\"}");
+        assert_eq!(msg, "{\"action\": \"start\", \"game_id\": 1234}");
     })
     .unwrap();
 
