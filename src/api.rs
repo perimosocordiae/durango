@@ -1,4 +1,4 @@
-use blau_api::{GameAPI, PlayerInfo, Result};
+use blau_api::{DynSafeGameAPI, GameAPI, PlayerInfo, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -125,31 +125,6 @@ impl GameAPI for DurangoAPI {
         })
     }
 
-    fn is_game_over(&self) -> bool {
-        self.game_over
-    }
-
-    fn final_state(&self) -> Result<String> {
-        if !self.game_over {
-            return Err("Game is not finished".into());
-        }
-        let fs = FinalState {
-            game: self.state.clone(),
-            scores: self.state.player_scores(),
-            history: self.history.clone(),
-        };
-        Ok(serde_json::to_string(&fs)?)
-    }
-
-    fn player_view(&self, player_id: &str) -> Result<String> {
-        let player_idx = self
-            .player_ids
-            .iter()
-            .position(|id| id == player_id)
-            .ok_or("Unknown player ID")?;
-        self.view(player_idx)
-    }
-
     fn start<F: FnMut(&str, &str)>(
         &mut self,
         game_id: i64,
@@ -177,6 +152,33 @@ impl GameAPI for DurangoAPI {
         // Advance to wait for the next player action.
         self.process_agents(&mut notice_cb)?;
         Ok(())
+    }
+}
+
+impl DynSafeGameAPI for DurangoAPI {
+    fn is_game_over(&self) -> bool {
+        self.game_over
+    }
+
+    fn final_state(&self) -> Result<String> {
+        if !self.game_over {
+            return Err("Game is not finished".into());
+        }
+        let fs = FinalState {
+            game: self.state.clone(),
+            scores: self.state.player_scores(),
+            history: self.history.clone(),
+        };
+        Ok(serde_json::to_string(&fs)?)
+    }
+
+    fn player_view(&self, player_id: &str) -> Result<String> {
+        let player_idx = self
+            .player_ids
+            .iter()
+            .position(|id| id == player_id)
+            .ok_or("Unknown player ID")?;
+        self.view(player_idx)
     }
 
     fn current_player_id(&self) -> &str {
