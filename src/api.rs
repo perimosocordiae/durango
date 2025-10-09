@@ -114,15 +114,12 @@ impl GameAPI for DurangoAPI {
         })
     }
 
-    fn restore(player_ids: &[PlayerInfo], final_state: &str) -> Result<Self> {
+    fn restore(player_info: &[PlayerInfo], final_state: &str) -> Result<Self> {
         let fs: FinalState = serde_json::from_str(final_state)?;
         Ok(Self {
             state: fs.game,
-            player_ids: player_ids.iter().map(|p| p.id.clone()).collect(),
-            agents: player_ids
-                .iter()
-                .map(|p| p.level.map(|lvl| create_agent(1 + lvl as usize)))
-                .collect(),
+            player_ids: player_info.iter().map(|p| p.id.clone()).collect(),
+            agents: vec![],
             history: fs.history,
             game_over: true,
         })
