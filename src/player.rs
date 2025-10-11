@@ -1,5 +1,5 @@
-use crate::cards::Card;
 use crate::data::AxialCoord;
+use crate::{cards::Card, data::BonusToken};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,7 @@ pub struct Player {
     pub(crate) discard: Vec<Card>,
     pub(crate) trashes: usize,
     pub can_buy: bool,
+    pub tokens: Vec<BonusToken>,
 }
 
 fn rev_sorted(xs: &[usize]) -> Vec<usize> {
@@ -44,6 +45,7 @@ impl Player {
             discard: Vec::new(),
             trashes: 0,
             can_buy: true,
+            tokens: Vec::new(),
         }
     }
     /// Move specified `cards` from self.hand into self.played.

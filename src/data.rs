@@ -94,7 +94,7 @@ pub enum Terrain {
     Cave,    // Get a bonus
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BonusToken {
     Jungle(usize),
     Desert(usize),

@@ -1,5 +1,7 @@
 use crate::cards::{BuyableCard, Card, CardAction};
-use crate::data::{AxialCoord, HexDirection, HexMap, Node, Terrain};
+use crate::data::{
+    AxialCoord, BonusToken, HexDirection, HexMap, Node, Terrain,
+};
 use crate::graph::HexGraph;
 use crate::player::Player;
 use serde::{Deserialize, Serialize};
@@ -567,7 +569,19 @@ impl GameState {
                 }
             }
             DrawAction::Token(i) => {
-                todo!("Use token {i} to draw a card")
+                let tokens = &self.curr_player().tokens;
+                let num_tokens = tokens.len();
+                let tok = tokens.get(*i).ok_or(format!(
+                    "Invalid token index {i}, given {num_tokens} tokens"
+                ))?;
+                if matches!(tok, BonusToken::DrawCard) {
+                    self.players[self.curr_player_idx]
+                        .fill_hand(hand_size + 1, rng);
+                } else {
+                    return Err(format!(
+                        "Cannot use token {tok:?} to draw cards"
+                    ));
+                }
             }
         }
         Ok(())
