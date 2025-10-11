@@ -1,9 +1,10 @@
 use crate::cards::{BuyableCard, Card, CardAction};
 use crate::data::{
-    AxialCoord, BonusToken, HexDirection, HexMap, Node, Terrain,
+    self, AxialCoord, BonusToken, HexDirection, HexMap, Node, Terrain,
 };
 use crate::graph::HexGraph;
 use crate::player::Player;
+use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 const MOVE_TYPES: [&str; 3] = ["jungle", "desert", "water"];
@@ -83,6 +84,7 @@ pub struct GameState {
     pub players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
+    bonuses: Vec<(AxialCoord, Vec<BonusToken>)>,
     pub curr_player_idx: usize,
     pub round_idx: usize,
 }
@@ -122,6 +124,23 @@ impl GameState {
             .map(|start_idx| {
                 let start_pos = map.nodes[start_idx].0;
                 Player::new(start_pos, rng)
+            })
+            .collect();
+        // Initialize cave bonuses.
+        let mut all_tokens = data::ALL_BONUS_TOKENS.to_vec();
+        all_tokens.shuffle(rng);
+        let bonuses = map
+            .nodes
+            .iter()
+            .filter_map(|(pos, node)| {
+                if node.terrain == Terrain::Cave && all_tokens.len() >= 4 {
+                    Some((
+                        pos.clone(),
+                        all_tokens.split_off(all_tokens.len() - 4),
+                    ))
+                } else {
+                    None
+                }
             })
             .collect();
         Ok(Self {
@@ -168,6 +187,7 @@ impl GameState {
                 // Native
                 BuyableCard::action(10, CardAction::FreeMove, false),
             ],
+            bonuses,
             curr_player_idx: 0,
             round_idx: 0,
         })
@@ -452,6 +472,9 @@ impl GameState {
             if !mv.cards.is_empty() {
                 return Err("Cannot use cards to visit a cave".to_string());
             }
+            if self.curr_player().visited_caves.contains(&cave_pos) {
+                return Err("Already visited this cave, must move away before returning".into());
+            }
             return self.give_bonus(cave_pos);
         }
 
@@ -530,6 +553,8 @@ impl GameState {
         } else {
             player.mark_played(&mv.cards);
         }
+        // Clear any visited caves that are no longer adjacent.
+        player.visited_caves.retain(|&cave_pos| pos.is_adjacent(cave_pos));
         Ok(())
     }
 
@@ -602,12 +627,19 @@ impl GameState {
     }
 
     fn give_bonus(&mut self, pos: AxialCoord) -> Result<(), String> {
-        let cave = self.map.with_terrain(pos, Terrain::Cave);
-        if cave.is_none() {
-            return Err(format!("No cave at position {pos:?}"));
-        }
-        // TODO: check that we have enough bonuses in the cave.
-        todo!("Implement cave bonuses")
+        let tokens = self
+            .bonuses
+            .iter_mut()
+            .find_map(|(p, tokens)| if *p == pos { Some(tokens) } else { None })
+            .ok_or(format!("No cave at {pos:?}"))?;
+        let tok = tokens
+            .pop()
+            .ok_or(format!("No bonus tokens remaining in cave at {pos:?}"))?;
+        self.players[self.curr_player_idx].tokens.push(tok);
+        self.players[self.curr_player_idx]
+            .visited_caves
+            .push(pos);
+        Ok(())
     }
 
     /// Get the neighboring nodes of a given node index.

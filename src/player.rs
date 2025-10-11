@@ -12,9 +12,12 @@ pub struct Player {
     pub hand: Vec<Card>,
     pub(crate) played: Vec<Card>,
     pub(crate) discard: Vec<Card>,
-    pub(crate) trashes: usize,
-    pub can_buy: bool,
     pub tokens: Vec<BonusToken>,
+    pub trashes: usize,
+    pub can_buy: bool,
+    // Cave positions added when visited, removed when the player moves away.
+    #[serde(skip)]
+    pub visited_caves: Vec<AxialCoord>,
 }
 
 fn rev_sorted(xs: &[usize]) -> Vec<usize> {
@@ -43,9 +46,10 @@ impl Player {
             hand,
             played: Vec::new(),
             discard: Vec::new(),
+            tokens: Vec::new(),
             trashes: 0,
             can_buy: true,
-            tokens: Vec::new(),
+            visited_caves: Vec::new(),
         }
     }
     /// Move specified `cards` from self.hand into self.played.
@@ -135,6 +139,7 @@ mod tests {
         assert_eq!(p.discard.len(), 0);
         assert_eq!(p.trashes, 0);
         assert!(p.can_buy);
+        assert_eq!(p.visited_caves.len(), 0);
         assert_eq!(p.num_cards(), 8);
     }
 }

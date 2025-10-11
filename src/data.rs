@@ -21,6 +21,15 @@ pub struct AxialCoord {
     pub q: i32,
     pub r: i32,
 }
+impl AxialCoord {
+    pub fn is_adjacent(&self, other: AxialCoord) -> bool {
+        let dq = (self.q - other.q).abs();
+        let dr = (self.r - other.r).abs();
+        let ds = (self.q + self.r - other.q - other.r).abs();
+        // max(dq, dr, ds) == 1
+        (dq <= 1) && (dr <= 1) && (ds <= 1) && (dq + dr + ds == 2)
+    }
+}
 impl std::fmt::Debug for AxialCoord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({},{})", self.q, self.r)
@@ -107,6 +116,45 @@ pub enum BonusToken {
     FreeMove,
     SwapSymbol(usize),
 }
+
+pub(crate) static ALL_BONUS_TOKENS: [BonusToken; 36] = [
+    BonusToken::Jungle(1),
+    BonusToken::Jungle(1),
+    BonusToken::Jungle(2),
+    BonusToken::Jungle(2),
+    BonusToken::Jungle(2),
+    BonusToken::Jungle(3),
+    BonusToken::Jungle(3),
+    BonusToken::Desert(1),
+    BonusToken::Desert(1),
+    BonusToken::Desert(2),
+    BonusToken::Desert(2),
+    BonusToken::Desert(2),
+    BonusToken::Water(1),
+    BonusToken::Water(1),
+    BonusToken::Water(2),
+    BonusToken::Water(2),
+    BonusToken::Water(2),
+    BonusToken::DrawCard,
+    BonusToken::DrawCard,
+    BonusToken::DrawCard,
+    BonusToken::DrawCard,
+    BonusToken::TrashCard,
+    BonusToken::TrashCard,
+    BonusToken::TrashCard,
+    BonusToken::TrashCard,
+    BonusToken::ReplaceHand,
+    BonusToken::ReplaceHand,
+    BonusToken::ReplaceHand,
+    BonusToken::DoubleUse,
+    BonusToken::DoubleUse,
+    BonusToken::ShareHex,
+    BonusToken::ShareHex,
+    BonusToken::FreeMove,
+    BonusToken::FreeMove,
+    BonusToken::SwapSymbol(0),
+    BonusToken::SwapSymbol(0),
+];
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Node {
