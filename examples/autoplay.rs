@@ -43,7 +43,13 @@ fn interactive_action(g: &game::GameState) -> game::PlayerAction {
     }
 }
 
-fn run_game(args: &Args) {
+struct RunInfo {
+    rounds: usize,
+    actions: usize,
+    winner: usize,
+}
+
+fn run_game(args: &Args) -> Option<RunInfo> {
     let mut g = match game::GameState::new(
         args.players,
         &args.preset,
@@ -52,7 +58,7 @@ fn run_game(args: &Args) {
         Ok(game) => game,
         Err(e) => {
             eprintln!("Error creating game state: {}", e);
-            return;
+            return None;
         }
     };
     let ais = (0..args.players)
@@ -73,27 +79,56 @@ fn run_game(args: &Args) {
         }
         match g.process_action(&act) {
             Ok(true) => {
-                println!(
-                    "Game over after {} rounds, {a} actions. Finished: {:?}",
-                    g.round_idx,
-                    g.players_at_finish()
-                );
-                break;
+                let finishers = g.players_at_finish();
+                let rounds = g.round_idx;
+                if !args.quiet {
+                    println!(
+                        "Game over: {rounds} rounds, {a} actions, finished={finishers:?}",
+                    );
+                }
+                return Some(RunInfo {
+                    rounds,
+                    actions: a,
+                    winner: finishers[0],
+                });
             }
             Ok(false) => {}
             Err(e) => {
-                eprintln!("Error processing action: {}", e);
+                println!("Error processing action: {}", e);
                 if !is_user {
-                    break;
+                    return None;
                 }
             }
         }
     }
+    None
 }
 
 fn main() {
     let args = Args::parse();
+    let mut num_success = 0;
+    let mut sum_rounds = 0;
+    let mut sum_actions = 0;
+    let mut win_counts = vec![0; args.players];
     for _ in 0..args.repeats {
-        run_game(&args);
+        if let Some(info) = run_game(&args) {
+            num_success += 1;
+            sum_rounds += info.rounds;
+            sum_actions += info.actions;
+            win_counts[info.winner] += 1;
+        }
+    }
+    println!(
+        "{} out of {} games were successful",
+        num_success, args.repeats
+    );
+    let denom = num_success.max(1) as f64;
+    println!(
+        "Average rounds: {:.1}, actions: {:.1}",
+        sum_rounds as f64 / denom,
+        sum_actions as f64 / denom
+    );
+    for (i, count) in win_counts.iter().enumerate() {
+        println!("Player {i}: {count} wins");
     }
 }
