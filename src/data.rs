@@ -105,9 +105,9 @@ pub enum Terrain {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BonusToken {
-    Jungle(usize),
-    Desert(usize),
-    Water(usize),
+    Jungle(u8),
+    Desert(u8),
+    Water(u8),
     DrawCard,
     TrashCard,
     ReplaceHand,
@@ -115,6 +115,14 @@ pub enum BonusToken {
     ShareHex,
     FreeMove,
     SwapSymbol,
+}
+impl BonusToken {
+    pub fn gold_value(&self) -> u8 {
+        match self {
+            BonusToken::Desert(v) => *v,
+            _ => 0,
+        }
+    }
 }
 
 pub(crate) static ALL_BONUS_TOKENS: [BonusToken; 36] = [

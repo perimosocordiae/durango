@@ -342,8 +342,15 @@ impl GameState {
         if bcard.quantity == 0 {
             return Err("Card is out of stock".into());
         }
-        let hand = &self.curr_player().hand;
-        let bucks: u8 = buy.cards.iter().map(|i| hand[*i].gold_value()).sum();
+        let player = self.curr_player();
+        let hand = &player.hand;
+        let tokens = &player.tokens;
+        let bucks: u8 = buy
+            .cards
+            .iter()
+            .map(|i| hand[*i].gold_value())
+            .chain(buy.tokens.iter().map(|i| tokens[*i].gold_value()))
+            .sum();
         let mut is_free_buy = false;
         if bucks < bcard.cost {
             // Check if we're trying to use a FreeBuy card.
@@ -361,7 +368,7 @@ impl GameState {
                 ));
             }
         }
-        if !is_free_buy && !self.curr_player().can_buy {
+        if !is_free_buy && !player.can_buy {
             return Err("Can only buy one card per turn".into());
         }
         // Identify any single-use cards used to pay for the purchase. Note that
@@ -428,6 +435,10 @@ impl GameState {
         // Ensure the shop remains sorted by cost. We only ever remove from
         // storage, so no need to re-sort that.
         self.shop.sort_unstable_by_key(|c| c.cost);
+        // Trash any used tokens. Assumes tokens are in sorted order.
+        for idx in buy.tokens.iter().rev() {
+            self.players[self.curr_player_idx].tokens.swap_remove(*idx);
+        }
         Ok(())
     }
 
@@ -616,6 +627,8 @@ impl GameState {
                         "Cannot use token {tok:?} to draw cards"
                     ));
                 }
+                // Remove the used token.
+                self.players[self.curr_player_idx].tokens.swap_remove(*i);
             }
         }
         Ok(())
