@@ -44,6 +44,13 @@ impl MoveAction {
             path: vec![dir],
         }
     }
+    pub fn cave(dir: HexDirection) -> Self {
+        Self {
+            cards: vec![],
+            tokens: vec![],
+            path: vec![dir],
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -554,7 +561,9 @@ impl GameState {
             player.mark_played(&mv.cards);
         }
         // Clear any visited caves that are no longer adjacent.
-        player.visited_caves.retain(|&cave_pos| pos.is_adjacent(cave_pos));
+        player
+            .visited_caves
+            .retain(|&cave_pos| pos.is_adjacent(cave_pos));
         Ok(())
     }
 
@@ -626,6 +635,13 @@ impl GameState {
         Ok(())
     }
 
+    pub fn can_visit_cave(&self, pos: AxialCoord) -> bool {
+        self.bonuses
+            .iter()
+            .any(|(p, tokens)| *p == pos && !tokens.is_empty())
+            && !self.curr_player().visited_caves.contains(&pos)
+    }
+
     fn give_bonus(&mut self, pos: AxialCoord) -> Result<(), String> {
         let tokens = self
             .bonuses
@@ -636,9 +652,7 @@ impl GameState {
             .pop()
             .ok_or(format!("No bonus tokens remaining in cave at {pos:?}"))?;
         self.players[self.curr_player_idx].tokens.push(tok);
-        self.players[self.curr_player_idx]
-            .visited_caves
-            .push(pos);
+        self.players[self.curr_player_idx].visited_caves.push(pos);
         Ok(())
     }
 

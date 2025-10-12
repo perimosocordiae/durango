@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::cards::{Card, CardAction};
-use crate::data::{HexDirection, Terrain};
+use crate::data::{BonusToken, HexDirection, Terrain};
 use crate::game::{
     BuyCardAction, BuyIndex, DrawAction, GameState, MoveAction, PlayerAction,
 };
@@ -29,8 +29,11 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
         }
         match node.terrain {
             Terrain::Invalid => continue,
-            // Avoid caves for now because they're not implemented yet.
-            Terrain::Cave => continue,
+            Terrain::Cave => {
+                if game.can_visit_cave(pos) {
+                    valid_moves.push(MoveAction::cave(dir));
+                }
+            }
             Terrain::Jungle => {
                 for (i, card) in me.hand.iter().enumerate() {
                     if card.movement[0] >= node.cost {
@@ -134,8 +137,8 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
 }
 
 fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
-    game.curr_player()
-        .hand
+    let me = game.curr_player();
+    me.hand
         .iter()
         .enumerate()
         .filter_map(|(i, c)| match c.action {
@@ -144,6 +147,13 @@ fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
             }
             _ => None,
         })
+        .chain(me.tokens.iter().enumerate().filter_map(|(i, t)| {
+            if let BonusToken::DrawCard = t {
+                Some(DrawAction::Token(i))
+            } else {
+                None
+            }
+        }))
         .collect()
 }
 
@@ -331,13 +341,23 @@ impl Agent for GreedyAgent {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
         let mut rng = rand::rng();
         let me = game.curr_player();
-        if me.hand.is_empty() {
-            return PlayerAction::FinishTurn;
+        let my_idx = game.map.node_idx(me.position).unwrap();
+
+        // Check if we can enter a cave.
+        for (dir, pos, node) in game.neighbors_of_idx(my_idx) {
+            if node.terrain == Terrain::Cave && game.can_visit_cave(pos) {
+                return PlayerAction::Move(MoveAction::cave(dir));
+            }
         }
 
-        // Play any draw cards.
+        // Play any draw cards / tokens.
         if let Some(act) = valid_draw_actions(game).into_iter().next() {
             return PlayerAction::Draw(act);
+        }
+
+        // TODO: we might still be able to play tokens if we have no cards.
+        if me.hand.is_empty() {
+            return PlayerAction::FinishTurn;
         }
 
         // Play any FreeBuy cards, picking the most expensive card possible.
@@ -360,7 +380,6 @@ impl Agent for GreedyAgent {
         }
 
         // Try to move as close to the finish as possible.
-        let my_idx = game.map.node_idx(me.position).unwrap();
         // Look at all one-card moves first.
         let moves = me
             .hand

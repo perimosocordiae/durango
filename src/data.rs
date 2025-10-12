@@ -114,7 +114,7 @@ pub enum BonusToken {
     DoubleUse,
     ShareHex,
     FreeMove,
-    SwapSymbol(usize),
+    SwapSymbol,
 }
 
 pub(crate) static ALL_BONUS_TOKENS: [BonusToken; 36] = [
@@ -152,8 +152,8 @@ pub(crate) static ALL_BONUS_TOKENS: [BonusToken; 36] = [
     BonusToken::ShareHex,
     BonusToken::FreeMove,
     BonusToken::FreeMove,
-    BonusToken::SwapSymbol(0),
-    BonusToken::SwapSymbol(0),
+    BonusToken::SwapSymbol,
+    BonusToken::SwapSymbol,
 ];
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
