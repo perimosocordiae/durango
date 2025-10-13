@@ -51,6 +51,19 @@ impl MoveAction {
             path: vec![dir],
         }
     }
+    pub fn is_free_move(&self, player: &Player) -> bool {
+        if self.cards.len() == 1
+            && let Some(card) = player.hand.get(self.cards[0])
+        {
+            return matches!(card.action, Some(CardAction::FreeMove));
+        }
+        if self.tokens.len() == 1
+            && let Some(tok) = player.tokens.get(self.tokens[0])
+        {
+            return matches!(tok, BonusToken::FreeMove);
+        }
+        false
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -496,20 +509,12 @@ impl GameState {
             return self.give_bonus(cave_pos);
         }
 
-        if mv.cards.is_empty() {
-            return Err("Must use cards to move".to_string());
-        }
-        // Handle cards that provide a free move.
-        if mv.cards.len() == 1
-            && matches!(
-                self.curr_player().hand[mv.cards[0]].action,
-                Some(CardAction::FreeMove)
-            )
-        {
-            if mv.path.len() != 1 {
+        // Handle cards/tokens that provide a free move.
+        let path_len = mv.path.len();
+        if mv.is_free_move(self.curr_player()) {
+            if path_len != 1 {
                 return Err(format!(
-                    "Only one step allowed for free movement, got {}",
-                    mv.path.len()
+                    "Only one step allowed for free movement, got {path_len}"
                 ));
             }
             card_cost = 0;
@@ -519,10 +524,9 @@ impl GameState {
         let mut is_single_use = false;
         if card_cost > 0 {
             // Validate discarding / trashing cards.
-            if mv.path.len() != 1 {
+            if path_len != 1 {
                 return Err(format!(
-                    "Can only move one step when discarding/trashing cards, got {}",
-                    mv.path.len()
+                    "Can only move one step when discarding/trashing cards, got {path_len}",
                 ));
             }
             if mv.cards.len() != card_cost as usize {
@@ -532,8 +536,13 @@ impl GameState {
                     mv.cards.len()
                 ));
             }
-        } else {
-            // Validate normal movement.
+            if !mv.tokens.is_empty() {
+                return Err(
+                    "Cannot use tokens when discarding/trashing cards".into()
+                );
+            }
+        } else if !mv.cards.is_empty() {
+            // Validate normal card movement.
             if mv.cards.len() != 1 {
                 return Err(format!(
                     "Must use a single card to move, got {}",
@@ -548,16 +557,42 @@ impl GameState {
                     move_cost[0], move_cost[1], move_cost[2]
                 ));
             }
-            let card = &self.curr_player().hand[mv.cards[0]];
-            is_single_use = card.single_use;
-            for (i, move_type) in MOVE_TYPES.iter().enumerate() {
-                if move_cost[i] > card.movement[i] {
+            let hand = &self.curr_player().hand;
+            let card = &hand[mv.cards[0]];
+            let tokens = &self.curr_player().tokens;
+            // Ensure we have enough movement of the required type.
+            if mv
+                .tokens
+                .iter()
+                .any(|&i| matches!(tokens[i], BonusToken::SwapSymbol))
+            {
+                let m = *card.movement.iter().max().unwrap();
+                if m < max_cost {
                     return Err(format!(
-                        "Need {}+ {} movement, but card {:?} has {}",
-                        move_cost[i], move_type, card, card.movement[i]
+                        "Need {max_cost}+ movement, but card {card:?} can only move {m}",
                     ));
                 }
+            } else {
+                for (i, move_type) in MOVE_TYPES.iter().enumerate() {
+                    if move_cost[i] > card.movement[i] {
+                        return Err(format!(
+                            "Need {}+ {} movement, but card {:?} has {}",
+                            move_cost[i], move_type, card, card.movement[i]
+                        ));
+                    }
+                }
             }
+            // Check for single-use card, unless we're using a DoubleUse token.
+            is_single_use = card.single_use
+                && !mv
+                    .tokens
+                    .iter()
+                    .any(|&i| matches!(tokens[i], BonusToken::DoubleUse));
+        } else if !mv.tokens.is_empty() {
+            // Validate token movement.
+            todo!("Implement token-based movement");
+        } else {
+            return Err("Must use cards or tokens to move".into());
         }
 
         // Update the player's position and cards.
@@ -575,6 +610,10 @@ impl GameState {
         player
             .visited_caves
             .retain(|&cave_pos| pos.is_adjacent(cave_pos));
+        // Trash any used tokens. Assumes tokens are in sorted order.
+        for idx in mv.tokens.iter().rev() {
+            player.tokens.swap_remove(*idx);
+        }
         Ok(())
     }
 
@@ -619,13 +658,22 @@ impl GameState {
                 let tok = tokens.get(*i).ok_or(format!(
                     "Invalid token index {i}, given {num_tokens} tokens"
                 ))?;
-                if matches!(tok, BonusToken::DrawCard) {
-                    self.players[self.curr_player_idx]
-                        .fill_hand(hand_size + 1, rng);
-                } else {
-                    return Err(format!(
-                        "Cannot use token {tok:?} to draw cards"
-                    ));
+                match tok {
+                    BonusToken::DrawCard => {
+                        self.players[self.curr_player_idx]
+                            .fill_hand(hand_size + 1, rng);
+                    }
+                    BonusToken::TrashCard => {
+                        self.players[self.curr_player_idx].trashes += 1;
+                    }
+                    BonusToken::ReplaceHand => {
+                        todo!("Implement ReplaceHand token");
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Cannot use token {tok:?} to draw cards"
+                        ));
+                    }
                 }
                 // Remove the used token.
                 self.players[self.curr_player_idx].tokens.swap_remove(*i);
