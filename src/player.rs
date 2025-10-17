@@ -108,6 +108,23 @@ impl Player {
             + self.discard.len()
     }
 
+    /// Total movement points across all cards.
+    pub fn sum_movement(&self) -> [u8; 3] {
+        let mut sums = [0u8; 3];
+        for card in self
+            .hand
+            .iter()
+            .chain(self.played.iter())
+            .chain(self.deck.iter())
+            .chain(self.discard.iter())
+        {
+            for (i, &mv) in card.movement.iter().enumerate() {
+                sums[i] += mv;
+            }
+        }
+        sums
+    }
+
     pub fn debug_str(&self, idx: usize) -> String {
         format!(
             "P{idx}{:?}: hand={:?}, deck={}, played={}, discard={}, can_buy={}",

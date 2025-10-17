@@ -5,6 +5,7 @@ use crate::data::{BonusToken, HexDirection, Terrain};
 use crate::game::{
     BuyCardAction, BuyIndex, DrawAction, GameState, MoveAction, PlayerAction,
 };
+use crate::player::Player;
 use rand::Rng;
 
 pub trait Agent {
@@ -144,10 +145,13 @@ fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
             _ => None,
         })
         .chain(me.tokens.iter().enumerate().filter_map(|(i, t)| {
-            if let BonusToken::DrawCard = t {
-                Some(DrawAction::Token(i))
-            } else {
-                None
+            match t {
+                BonusToken::DrawCard | BonusToken::TrashCard => {
+                    Some(DrawAction::Token(i))
+                }
+                // TODO: Move this to the case above once it's implemented.
+                BonusToken::ReplaceHand => None,
+                _ => None,
             }
         }))
         .collect()
@@ -159,13 +163,14 @@ impl Agent for RandomAgent {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
         let mut rng = rand::rng();
         let me = game.curr_player();
-        if me.hand.is_empty() {
-            return PlayerAction::FinishTurn;
-        }
         let mut valid_draws = valid_draw_actions(game);
         if !valid_draws.is_empty() {
             let idx = rng.random_range(0..valid_draws.len());
             return PlayerAction::Draw(valid_draws.swap_remove(idx));
+        }
+        if can_safely_trash(me) {
+            let idx = rng.random_range(0..me.hand.len());
+            return PlayerAction::Trash(vec![idx]);
         }
         let mut valid_moves = valid_move_actions(game);
         if !valid_moves.is_empty() {
@@ -176,6 +181,9 @@ impl Agent for RandomAgent {
         if !valid_buys.is_empty() {
             let idx = rng.random_range(0..valid_buys.len());
             return PlayerAction::BuyCard(valid_buys.swap_remove(idx));
+        }
+        if me.hand.is_empty() {
+            return PlayerAction::FinishTurn;
         }
         PlayerAction::Discard((0..me.hand.len()).collect())
     }
@@ -366,6 +374,13 @@ fn best_move_for_node(
     })
 }
 
+fn can_safely_trash(me: &Player) -> bool {
+    me.trashes > 0
+        && !me.hand.is_empty()
+        && me.num_cards() > 4
+        && me.sum_movement().into_iter().min().unwrap() > 1
+}
+
 #[derive(Default)]
 struct GreedyAgent {}
 impl Agent for GreedyAgent {
@@ -402,6 +417,27 @@ impl Agent for GreedyAgent {
                     .collect();
                 let idx = rng.random_range(0..best_buys.len());
                 return PlayerAction::BuyCard(best_buys.swap_remove(idx));
+            }
+        }
+
+        // Trash any starter cards, if we have trashes available, and if it's
+        // not going to leave us with too few cards.
+        if can_safely_trash(me) {
+            let idxs = me
+                .hand
+                .iter()
+                .enumerate()
+                .filter_map(|(i, c)| {
+                    if c.movement.iter().sum::<u8>() == 1 {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                })
+                .take(me.trashes)
+                .collect::<Vec<_>>();
+            if !idxs.is_empty() {
+                return PlayerAction::Trash(idxs);
             }
         }
 
