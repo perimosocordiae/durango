@@ -88,6 +88,7 @@ pub struct PlayerView<'a> {
     map: &'a HexMap,
     player: &'a Player,
     positions: Vec<AxialCoord>,
+    bonuses: Vec<(&'a AxialCoord, usize)>,
     hand: &'a [Card],
     shop: &'a [BuyableCard],
     storage: &'a [BuyableCard],
@@ -240,6 +241,11 @@ impl GameState {
             map: &self.map,
             player: &self.players[player_idx],
             positions: self.player_positions(),
+            bonuses: self
+                .bonuses
+                .iter()
+                .map(|(pos, toks)| (pos, toks.len()))
+                .collect(),
             hand: &self.players[player_idx].hand,
             shop: &self.shop,
             storage: &self.storage,

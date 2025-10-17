@@ -214,10 +214,10 @@ fn exercise_api() {
         num_notices += 1;
     })
     .unwrap();
-    // There should be between 2 and 5 notices,
+    // There should be between 2 and 6 notices,
     // depending on how many actions the AI took.
     assert!(
-        (2..=5).contains(&num_notices),
-        "num_notices={num_notices} out of bounds [2, 5]",
+        (2..=6).contains(&num_notices),
+        "num_notices={num_notices} out of bounds [2, 6]",
     );
 }
