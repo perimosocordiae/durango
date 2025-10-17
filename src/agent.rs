@@ -212,18 +212,12 @@ fn all_free_moves(
         })
 }
 
-fn all_moves_for_card<'a>(
-    card: &'a Card,
-    card_idx: usize,
-    game: &'a GameState,
+fn all_moves_helper(
+    movement: &[u8; 3],
+    game: &GameState,
     my_idx: usize,
-) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
-    // Check for free moves first.
-    if let Some(CardAction::FreeMove) = card.action {
-        return Box::new(all_free_moves(game, card_idx, my_idx));
-    }
-    // Otherwise, we need to consider terrain and cost.
-    let max_move = *card.movement.iter().max().unwrap();
+) -> Vec<(usize, Vec<HexDirection>)> {
+    let max_move = *movement.iter().max().unwrap();
     struct QueueElem {
         idx: usize,
         path: Vec<HexDirection>,
@@ -262,7 +256,7 @@ fn all_moves_for_card<'a>(
             }
             let mut new_cost = cost;
             new_cost[terrain_idx] += node.cost;
-            if new_cost[terrain_idx] > card.movement[terrain_idx] {
+            if new_cost[terrain_idx] > movement[terrain_idx] {
                 continue;
             }
             if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
@@ -279,12 +273,53 @@ fn all_moves_for_card<'a>(
         }
     }
     // Drop the first seen entry because it's a null move.
-    Box::new(seen.into_iter().skip(1).map(move |(node_idx, path)| {
-        MoveCandidate {
+    seen.split_off(1)
+}
+
+fn all_moves_for_card<'a>(
+    card: &'a Card,
+    card_idx: usize,
+    game: &'a GameState,
+    my_idx: usize,
+) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
+    // Check for free moves first.
+    if let Some(CardAction::FreeMove) = card.action {
+        return Box::new(all_free_moves(game, card_idx, my_idx));
+    }
+    // Otherwise, we need to consider terrain and cost.
+    Box::new(
+        all_moves_helper(&card.movement, game, my_idx)
+            .into_iter()
+            .map(move |(node_idx, path)| MoveCandidate {
+                node_idx,
+                action: MoveAction::single_card(card_idx, path),
+            }),
+    )
+}
+
+fn all_moves_for_token(
+    token: &BonusToken,
+    token_idx: usize,
+    game: &GameState,
+    my_idx: usize,
+) -> impl Iterator<Item = MoveCandidate> {
+    let mut movement = [0u8; 3];
+    match token {
+        BonusToken::Jungle(v) => movement[0] = *v,
+        BonusToken::Desert(v) => movement[1] = *v,
+        BonusToken::Water(v) => movement[2] = *v,
+        _ => {}
+    }
+    all_moves_helper(&movement, game, my_idx).into_iter().map(
+        move |(node_idx, path)| MoveCandidate {
             node_idx,
-            action: MoveAction::single_card(card_idx, path),
-        }
-    }))
+            action: MoveAction {
+                cards: vec![],
+                tokens: vec![token_idx],
+                path,
+            },
+        },
+    )
 }
 
 fn best_move_for_node(
@@ -355,11 +390,6 @@ impl Agent for GreedyAgent {
             return PlayerAction::Draw(act);
         }
 
-        // TODO: we might still be able to play tokens if we have no cards.
-        if me.hand.is_empty() {
-            return PlayerAction::FinishTurn;
-        }
-
         // Play any FreeBuy cards, picking the most expensive card possible.
         if me
             .hand
@@ -393,6 +423,11 @@ impl Agent for GreedyAgent {
                     best_move_for_node(nbr_idx, dir, game, &me.hand)
                 },
             ));
+        // Also consider any token-only moves.
+        let moves =
+            moves.chain(me.tokens.iter().enumerate().flat_map(|(i, tok)| {
+                all_moves_for_token(tok, i, game, my_idx)
+            }));
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
         let dists = &game.graph.dists;
@@ -400,6 +435,11 @@ impl Agent for GreedyAgent {
             && dists[cand.node_idx] < dists[my_idx]
         {
             return PlayerAction::Move(cand.action);
+        }
+
+        // TODO: we might still be able to play tokens if we have no cards.
+        if me.hand.is_empty() {
+            return PlayerAction::FinishTurn;
         }
 
         // Try to buy the most expensive card possible.

@@ -154,10 +154,7 @@ impl GameState {
             .iter()
             .filter_map(|(pos, node)| {
                 if node.terrain == Terrain::Cave && all_tokens.len() >= 4 {
-                    Some((
-                        pos.clone(),
-                        all_tokens.split_off(all_tokens.len() - 4),
-                    ))
+                    Some((*pos, all_tokens.split_off(all_tokens.len() - 4)))
                 } else {
                     None
                 }
