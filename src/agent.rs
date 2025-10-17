@@ -473,13 +473,14 @@ impl Agent for GreedyAgent {
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
         let dists = &game.graph.dists;
-        if let Some(cand) = moves.min_by_key(|cand| dists[cand.node_idx])
+        let best_move = moves.min_by_key(|cand| dists[cand.node_idx]);
+        if let Some(cand) = &best_move
             && dists[cand.node_idx] < dists[my_idx]
         {
-            return PlayerAction::Move(cand.action);
+            return PlayerAction::Move(best_move.unwrap().action);
         }
 
-        // TODO: we might still be able to play tokens if we have no cards.
+        // TODO: allow buying with token, even if we have no cards.
         if me.hand.is_empty() {
             return PlayerAction::FinishTurn;
         }
@@ -538,6 +539,14 @@ impl Agent for GreedyAgent {
             .position(|t| matches!(t, BonusToken::ReplaceHand))
         {
             return PlayerAction::Draw(DrawAction::Token(idx));
+        }
+
+        // We're stuck, so try a lateral move if possible.
+        // TODO: if we're stuck for more than one turn, allow back-moves too.
+        if let Some(cand) = best_move
+            && dists[cand.node_idx] == dists[my_idx]
+        {
+            return PlayerAction::Move(cand.action);
         }
 
         // Nothing else to do, discard all cards.
