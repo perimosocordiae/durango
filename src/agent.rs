@@ -144,16 +144,11 @@ fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
             }
             _ => None,
         })
-        .chain(me.tokens.iter().enumerate().filter_map(|(i, t)| {
-            match t {
-                BonusToken::DrawCard | BonusToken::TrashCard => {
-                    Some(DrawAction::Token(i))
-                }
-                // TODO: Move this to the case above, but only after we stop
-                // automatically using these actions before anything else.
-                BonusToken::ReplaceHand => None,
-                _ => None,
+        .chain(me.tokens.iter().enumerate().filter_map(|(i, t)| match t {
+            BonusToken::DrawCard | BonusToken::TrashCard => {
+                Some(DrawAction::Token(i))
             }
+            _ => None,
         }))
         .collect()
 }
@@ -511,6 +506,15 @@ impl Agent for GreedyAgent {
             }
             let idx = rng.random_range(0..buys.len());
             return PlayerAction::BuyCard(buys.swap_remove(idx));
+        }
+
+        // If we can replace our hand with new cards, do so.
+        if let Some(idx) = me
+            .tokens
+            .iter()
+            .position(|t| matches!(t, BonusToken::ReplaceHand))
+        {
+            return PlayerAction::Draw(DrawAction::Token(idx));
         }
 
         // Nothing else to do, discard all cards.

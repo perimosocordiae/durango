@@ -110,9 +110,9 @@ pub enum BonusToken {
     Water(u8),
     DrawCard,
     TrashCard,
-    ReplaceHand, // TODO: teach agents to use
-    DoubleUse,   // TODO: teach agents to use
-    ShareHex,    // TODO: implement game logic
+    ReplaceHand,
+    DoubleUse, // TODO: teach agents to use
+    ShareHex,  // TODO: implement game logic
     FreeMove,
     SwapSymbol, // TODO: teach agents to use
 }
