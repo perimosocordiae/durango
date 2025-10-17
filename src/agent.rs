@@ -21,38 +21,33 @@ pub fn create_agent(difficulty: usize) -> Box<dyn Agent + Send> {
 }
 
 fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
-    let mut valid_moves = Vec::new();
     let me = game.curr_player();
+    let my_idx = game.map.node_idx(me.position).unwrap();
+    // Start with regular card moves.
+    let mut valid_moves: Vec<MoveAction> = me
+        .hand
+        .iter()
+        .enumerate()
+        .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx))
+        .map(|cand| cand.action)
+        .collect();
+    // Also consider any token-only moves.
+    valid_moves.extend(
+        me.tokens
+            .iter()
+            .enumerate()
+            .flat_map(|(i, tok)| all_moves_for_token(tok, i, game, my_idx))
+            .map(|cand| cand.action),
+    );
+    // Next, consider single-step moves (cave, swamp, village).
     for (dir, pos, node) in game.neighbors_of(me.position) {
         if game.is_occupied(pos) {
             continue;
         }
         match node.terrain {
-            Terrain::Invalid => continue,
             Terrain::Cave => {
                 if game.can_visit_cave(pos) {
                     valid_moves.push(MoveAction::cave(dir));
-                }
-            }
-            Terrain::Jungle => {
-                for (i, card) in me.hand.iter().enumerate() {
-                    if card.movement[0] >= node.cost {
-                        valid_moves.push(MoveAction::single_card(i, vec![dir]));
-                    }
-                }
-            }
-            Terrain::Desert => {
-                for (i, card) in me.hand.iter().enumerate() {
-                    if card.movement[1] >= node.cost {
-                        valid_moves.push(MoveAction::single_card(i, vec![dir]));
-                    }
-                }
-            }
-            Terrain::Water => {
-                for (i, card) in me.hand.iter().enumerate() {
-                    if card.movement[2] >= node.cost {
-                        valid_moves.push(MoveAction::single_card(i, vec![dir]));
-                    }
                 }
             }
             Terrain::Swamp => {
@@ -73,6 +68,7 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
                     ));
                 }
             }
+            _ => {}
         }
     }
     valid_moves
