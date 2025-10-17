@@ -104,13 +104,21 @@ fn run_game(args: &Args) -> Option<RunInfo> {
     None
 }
 
+const ALL_PRESETS: &[&str] = &[
+    "first", "easy1", "easy2", "medium1", "medium2", "hard1", "hard2",
+];
+
 fn main() {
-    let args = Args::parse();
+    let mut args = Args::parse();
+    let all_presets = args.preset == "all";
     let mut num_success = 0;
     let mut sum_rounds = 0;
     let mut sum_actions = 0;
     let mut win_counts = vec![0; args.players];
-    for _ in 0..args.repeats {
+    for i in 0..args.repeats {
+        if all_presets {
+            args.preset = ALL_PRESETS[i % ALL_PRESETS.len()].to_string();
+        }
         if let Some(info) = run_game(&args) {
             num_success += 1;
             sum_rounds += info.rounds;
