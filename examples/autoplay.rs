@@ -101,11 +101,12 @@ fn run_game(args: &Args) -> Option<RunInfo> {
             }
         }
     }
-    println!("Ran out of actions");
+    println!("Ran out of actions on {}", args.preset);
     println!("Player states:");
     for i in 0..args.players {
-        println!("{}", g.players[i].debug_str(i));
+        println!(" - {}", g.players[i].debug_str(i));
     }
+    println!("Scores: {:?}", g.player_scores());
     None
 }
 
