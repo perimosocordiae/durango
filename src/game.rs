@@ -541,14 +541,8 @@ impl GameState {
                     "Cannot use tokens when discarding/trashing cards".into()
                 );
             }
-        } else if !mv.cards.is_empty() {
-            // Validate normal card movement.
-            if mv.cards.len() != 1 {
-                return Err(format!(
-                    "Must use a single card to move, got {}",
-                    mv.cards.len()
-                ));
-            }
+        } else {
+            // Validate normal movement.
             let total_cost: u8 = move_cost.iter().sum();
             let max_cost: u8 = *move_cost.iter().max().unwrap();
             if total_cost != max_cost {
@@ -558,41 +552,89 @@ impl GameState {
                 ));
             }
             let hand = &self.curr_player().hand;
-            let card = &hand[mv.cards[0]];
             let tokens = &self.curr_player().tokens;
-            // Ensure we have enough movement of the required type.
-            if mv
-                .tokens
-                .iter()
-                .any(|&i| matches!(tokens[i], BonusToken::SwapSymbol))
-            {
-                let m = *card.movement.iter().max().unwrap();
-                if m < max_cost {
+
+            // Card movement.
+            if !mv.cards.is_empty() {
+                if mv.cards.len() != 1 {
                     return Err(format!(
-                        "Need {max_cost}+ movement, but card {card:?} can only move {m}",
+                        "Must use a single card to move, got {}",
+                        mv.cards.len()
                     ));
                 }
-            } else {
-                for (i, move_type) in MOVE_TYPES.iter().enumerate() {
-                    if move_cost[i] > card.movement[i] {
+                let card = &hand[mv.cards[0]];
+                // Ensure we have enough movement of the required type.
+                if mv
+                    .tokens
+                    .iter()
+                    .any(|&i| matches!(tokens[i], BonusToken::SwapSymbol))
+                {
+                    let m = *card.movement.iter().max().unwrap();
+                    if m < max_cost {
                         return Err(format!(
-                            "Need {}+ {} movement, but card {:?} has {}",
-                            move_cost[i], move_type, card, card.movement[i]
+                            "Need {max_cost}+ movement, but card {card:?} can only move {m}",
+                        ));
+                    }
+                } else {
+                    for (i, move_type) in MOVE_TYPES.iter().enumerate() {
+                        if move_cost[i] > card.movement[i] {
+                            return Err(format!(
+                                "Need {}+ {} movement, but card {:?} has {}",
+                                move_cost[i], move_type, card, card.movement[i]
+                            ));
+                        }
+                    }
+                }
+                // Check for single-use card, unless we're using a DoubleUse token.
+                is_single_use = card.single_use
+                    && !mv
+                        .tokens
+                        .iter()
+                        .any(|&i| matches!(tokens[i], BonusToken::DoubleUse));
+            } else if !mv.tokens.is_empty() {
+                // Token-only movement.
+                if mv.tokens.len() != 1 {
+                    // TODO: allow a move token plus ShareHex.
+                    return Err(format!(
+                        "Must use a single token to move, got {}",
+                        mv.tokens.len()
+                    ));
+                }
+                match &tokens[mv.tokens[0]] {
+                    BonusToken::Jungle(m) => {
+                        if move_cost[0] > *m {
+                            return Err(format!(
+                                "Need {}+ jungle movement, but token has {m}",
+                                move_cost[0]
+                            ));
+                        }
+                    }
+                    BonusToken::Desert(m) => {
+                        if move_cost[1] > *m {
+                            return Err(format!(
+                                "Need {}+ desert movement, but token has {m}",
+                                move_cost[1]
+                            ));
+                        }
+                    }
+                    BonusToken::Water(m) => {
+                        if move_cost[2] > *m {
+                            return Err(format!(
+                                "Need {}+ water movement, but token has {m}",
+                                move_cost[2]
+                            ));
+                        }
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Cannot use token {:?} to move",
+                            tokens[mv.tokens[0]]
                         ));
                     }
                 }
+            } else {
+                return Err("Must use cards or tokens to move".into());
             }
-            // Check for single-use card, unless we're using a DoubleUse token.
-            is_single_use = card.single_use
-                && !mv
-                    .tokens
-                    .iter()
-                    .any(|&i| matches!(tokens[i], BonusToken::DoubleUse));
-        } else if !mv.tokens.is_empty() {
-            // Validate token movement.
-            todo!("Implement token-based movement");
-        } else {
-            return Err("Must use cards or tokens to move".into());
         }
 
         // Update the player's position and cards.
