@@ -76,9 +76,16 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
 }
 
 fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
-    let hand = &game.curr_player().hand;
+    let me = game.curr_player();
+    // Empty if no DoubleUse token available, otherwise holds the token index.
+    let double_use: Vec<usize> = me
+        .tokens
+        .iter()
+        .position(|t| matches!(t, BonusToken::DoubleUse))
+        .map(|i| vec![i])
+        .unwrap_or_else(Vec::new);
     // Check for FreeBuy cards first.
-    for (i, c) in hand.iter().enumerate() {
+    for (i, c) in me.hand.iter().enumerate() {
         if let Some(CardAction::FreeBuy) = c.action {
             // Can buy any card for free, so just return all possible buys.
             let mut buys: Vec<BuyCardAction> = game
@@ -87,14 +94,14 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
                 .enumerate()
                 .map(|(j, _)| BuyCardAction {
                     cards: vec![i],
-                    tokens: vec![],
+                    tokens: double_use.clone(),
                     index: BuyIndex::Shop(j),
                 })
                 .collect();
             buys.extend(game.storage.iter().enumerate().map(|(j, _)| {
                 BuyCardAction {
                     cards: vec![i],
-                    tokens: vec![],
+                    tokens: double_use.clone(),
                     index: BuyIndex::Storage(j),
                 }
             }));
@@ -105,15 +112,22 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
     if !game.curr_player().can_buy {
         return vec![];
     }
-    let cash = hand.iter().map(|c| c.gold_value()).sum();
+    let hand_size = me.hand.len();
+    let cash = me.hand.iter().map(|c| c.gold_value()).sum();
+    // Only use the token if we're using a single-use card to pay.
+    let double_use = if me.hand.iter().any(|c| c.single_use) {
+        double_use
+    } else {
+        vec![]
+    };
     let mut buys: Vec<BuyCardAction> = game
         .shop
         .iter()
         .enumerate()
         .filter(|(_, c)| c.cost <= cash)
         .map(|(i, _)| BuyCardAction {
-            cards: (0..hand.len()).collect(),
-            tokens: vec![],
+            cards: (0..hand_size).collect(),
+            tokens: double_use.clone(),
             index: BuyIndex::Shop(i),
         })
         .collect();
@@ -124,8 +138,8 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
                 .enumerate()
                 .filter(|(_, c)| c.cost <= cash)
                 .map(|(i, _)| BuyCardAction {
-                    cards: (0..hand.len()).collect(),
-                    tokens: vec![],
+                    cards: (0..hand_size).collect(),
+                    tokens: double_use.clone(),
                     index: BuyIndex::Storage(i),
                 }),
         );
@@ -480,6 +494,15 @@ impl Agent for GreedyAgent {
                 .map(|c| c.cost)
                 .max()
         {
+            let double_use = if me.hand.iter().any(|c| c.single_use) {
+                me.tokens
+                    .iter()
+                    .position(|t| matches!(t, BonusToken::DoubleUse))
+                    .map(|i| vec![i])
+                    .unwrap_or_else(Vec::new)
+            } else {
+                vec![]
+            };
             let mut buys: Vec<BuyCardAction> = game
                 .shop
                 .iter()
@@ -487,7 +510,7 @@ impl Agent for GreedyAgent {
                 .filter(|(_, c)| c.cost == max_cost)
                 .map(|(i, _)| BuyCardAction {
                     cards: (0..hand_len).collect(),
-                    tokens: vec![],
+                    tokens: double_use.clone(),
                     index: BuyIndex::Shop(i),
                 })
                 .collect();
@@ -499,7 +522,7 @@ impl Agent for GreedyAgent {
                         .filter(|(_, c)| c.cost == max_cost)
                         .map(|(i, _)| BuyCardAction {
                             cards: (0..hand_len).collect(),
-                            tokens: vec![],
+                            tokens: double_use.clone(),
                             index: BuyIndex::Storage(i),
                         }),
                 );
