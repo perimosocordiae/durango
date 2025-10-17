@@ -89,6 +89,12 @@ impl Player {
             }
         }
     }
+    /// Set aside current hand into played, and draw a new hand.
+    pub(crate) fn replace_hand(&mut self, rng: &mut impl rand::Rng) {
+        let num_current = self.hand.len();
+        self.played.append(&mut self.hand);
+        self.fill_hand(num_current, rng);
+    }
     /// Clean up after the turn is over.
     pub(crate) fn finish_turn(&mut self, rng: &mut impl rand::Rng) {
         // Discard all played cards.

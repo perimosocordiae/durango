@@ -706,7 +706,7 @@ impl GameState {
                         self.players[self.curr_player_idx].trashes += 1;
                     }
                     BonusToken::ReplaceHand => {
-                        todo!("Implement ReplaceHand token");
+                        self.players[self.curr_player_idx].replace_hand(rng);
                     }
                     _ => {
                         return Err(format!(

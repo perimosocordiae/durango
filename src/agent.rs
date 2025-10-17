@@ -149,7 +149,8 @@ fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
                 BonusToken::DrawCard | BonusToken::TrashCard => {
                     Some(DrawAction::Token(i))
                 }
-                // TODO: Move this to the case above once it's implemented.
+                // TODO: Move this to the case above, but only after we stop
+                // automatically using these actions before anything else.
                 BonusToken::ReplaceHand => None,
                 _ => None,
             }

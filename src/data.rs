@@ -110,11 +110,11 @@ pub enum BonusToken {
     Water(u8),
     DrawCard,
     TrashCard,
-    ReplaceHand,
-    DoubleUse,
-    ShareHex,
+    ReplaceHand, // TODO: teach agents to use
+    DoubleUse,   // TODO: teach agents to use
+    ShareHex,    // TODO: implement game logic
     FreeMove,
-    SwapSymbol,
+    SwapSymbol, // TODO: teach agents to use
 }
 impl BonusToken {
     pub fn gold_value(&self) -> u8 {
