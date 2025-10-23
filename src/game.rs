@@ -628,6 +628,7 @@ impl GameState {
                             ));
                         }
                     }
+                    BonusToken::FreeMove => {}
                     _ => {
                         return Err(format!(
                             "Cannot use token {:?} to move",
