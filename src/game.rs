@@ -37,6 +37,13 @@ impl MoveAction {
             path,
         }
     }
+    pub fn single_token(token: usize, path: Vec<HexDirection>) -> Self {
+        Self {
+            cards: vec![],
+            tokens: vec![token],
+            path,
+        }
+    }
     pub fn multi_card(cards: Vec<usize>, dir: HexDirection) -> Self {
         Self {
             cards,

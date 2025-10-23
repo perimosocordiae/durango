@@ -204,9 +204,14 @@ struct MoveCandidate {
     action: MoveAction,
 }
 
+enum MoveIndex {
+    Card(usize),
+    Token(usize),
+}
+
 fn all_free_moves(
     game: &GameState,
-    card_idx: usize,
+    move_idx: MoveIndex,
     my_idx: usize,
 ) -> impl Iterator<Item = MoveCandidate> {
     game.graph
@@ -220,7 +225,14 @@ fn all_free_moves(
                 Terrain::Invalid | Terrain::Cave => None,
                 _ => Some(MoveCandidate {
                     node_idx: nbr_idx,
-                    action: MoveAction::single_card(card_idx, vec![dir]),
+                    action: match move_idx {
+                        MoveIndex::Token(token_idx) => {
+                            MoveAction::single_token(token_idx, vec![dir])
+                        }
+                        MoveIndex::Card(card_idx) => {
+                            MoveAction::single_card(card_idx, vec![dir])
+                        }
+                    },
                 }),
             }
         })
@@ -298,7 +310,11 @@ fn all_moves_for_card<'a>(
 ) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
     // Check for free moves first.
     if let Some(CardAction::FreeMove) = card.action {
-        return Box::new(all_free_moves(game, card_idx, my_idx));
+        return Box::new(all_free_moves(
+            game,
+            MoveIndex::Card(card_idx),
+            my_idx,
+        ));
     }
     // Otherwise, we need to consider terrain and cost.
     Box::new(
@@ -311,12 +327,19 @@ fn all_moves_for_card<'a>(
     )
 }
 
-fn all_moves_for_token(
-    token: &BonusToken,
+fn all_moves_for_token<'a>(
+    token: &'a BonusToken,
     token_idx: usize,
-    game: &GameState,
+    game: &'a GameState,
     my_idx: usize,
-) -> impl Iterator<Item = MoveCandidate> {
+) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
+    if matches!(token, BonusToken::FreeMove) {
+        return Box::new(all_free_moves(
+            game,
+            MoveIndex::Token(token_idx),
+            my_idx,
+        ));
+    }
     let mut movement = [0u8; 3];
     match token {
         BonusToken::Jungle(v) => movement[0] = *v,
@@ -324,16 +347,12 @@ fn all_moves_for_token(
         BonusToken::Water(v) => movement[2] = *v,
         _ => {}
     }
-    all_moves_helper(&movement, game, my_idx).into_iter().map(
+    Box::new(all_moves_helper(&movement, game, my_idx).into_iter().map(
         move |(node_idx, path)| MoveCandidate {
             node_idx,
-            action: MoveAction {
-                cards: vec![],
-                tokens: vec![token_idx],
-                path,
-            },
+            action: MoveAction::single_token(token_idx, path),
         },
-    )
+    ))
 }
 
 fn best_move_for_node(
