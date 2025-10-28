@@ -1,5 +1,5 @@
-use crate::data::AxialCoord;
-use crate::{cards::Card, data::BonusToken};
+use crate::cards::Card;
+use crate::data::{AxialCoord, Barrier, BonusToken};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,8 @@ pub struct Player {
     // Cave positions added when visited, removed when the player moves away.
     #[serde(skip)]
     pub visited_caves: Vec<AxialCoord>,
+    // Barriers broken, used for tie-breaking.
+    pub broken_barriers: Vec<Barrier>,
 }
 
 fn rev_sorted(xs: &[usize]) -> Vec<usize> {
@@ -50,6 +52,7 @@ impl Player {
             trashes: 0,
             can_buy: true,
             visited_caves: Vec::new(),
+            broken_barriers: Vec::new(),
         }
     }
     /// Move specified `cards` from self.hand into self.played.

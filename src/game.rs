@@ -314,15 +314,13 @@ impl GameState {
             .iter()
             .map(|p| {
                 let pos_idx = self.map.node_idx(p.position).unwrap();
-                let d = self.graph.dists[pos_idx];
-                if d != 0 {
-                    // Non-finished players score by how close
-                    // they got to the finish.
-                    return self.graph.max_dist - d;
+                let remaining_dist = self.graph.dists[pos_idx];
+                let mut score = self.graph.max_dist - remaining_dist
+                    + p.broken_barriers.len() as i32;
+                if remaining_dist == 0 {
+                    score += 1000; // bonus for finishing
                 }
-                // TODO: break ties based on broken barriers, once
-                // barriers are included in the game.
-                self.graph.max_dist + 1000
+                score
             })
             .collect()
     }
@@ -732,7 +730,7 @@ impl GameState {
         // Remove any broken barriers from the game. Assumes barriers are in
         // sorted order.
         for idx in broken_barriers.iter().rev() {
-            self.barriers.swap_remove(*idx);
+            player.broken_barriers.push(self.barriers.swap_remove(*idx));
         }
         Ok(())
     }
