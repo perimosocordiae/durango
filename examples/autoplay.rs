@@ -94,7 +94,10 @@ fn run_game(args: &Args) -> Option<RunInfo> {
             }
             Ok(false) => {}
             Err(e) => {
-                println!("Error processing action: {}", e);
+                println!(
+                    "Error processing {act:?} for player {}:\n{e}",
+                    g.curr_player_idx
+                );
                 if !is_user {
                     return None;
                 }

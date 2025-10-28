@@ -184,6 +184,24 @@ impl Node {
     }
 }
 
+/// A barrier between two boards.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Barrier {
+    pub from_board: usize,
+    pub to_board: usize,
+    pub terrain: Terrain,
+    pub cost: u8,
+}
+
+pub(crate) static ALL_BARRIER_TYPES: [(Terrain, u8); 6] = [
+    (Terrain::Jungle, 1),
+    (Terrain::Jungle, 2),
+    (Terrain::Desert, 1),
+    (Terrain::Water, 1),
+    (Terrain::Swamp, 1),
+    (Terrain::Swamp, 2),
+];
+
 #[derive(Serialize, Deserialize)]
 struct SavedNode {
     terrain: Terrain,

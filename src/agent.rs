@@ -41,7 +41,23 @@ fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
             .map(|cand| cand.action),
     );
     // Next, consider single-step moves (cave, swamp, village).
+    let from_board = game.map.nodes[my_idx].1.board_idx as usize;
     for (dir, pos, node) in game.neighbors_of(me.position) {
+        if let Some(barrier_idx) =
+            game.barrier_index(from_board, node.board_idx as usize)
+        {
+            let barrier = &game.barriers[barrier_idx];
+            // TODO: generate all length-cost combinations of cards.
+            if barrier.terrain == Terrain::Swamp
+                && me.hand.len() >= barrier.cost as usize
+            {
+                valid_moves.push(MoveAction::multi_card(
+                    (0..barrier.cost as usize).collect(),
+                    dir,
+                ));
+            }
+            continue;
+        }
         if game.is_occupied(pos) {
             continue;
         }
@@ -202,6 +218,7 @@ impl Agent for RandomAgent {
 struct MoveCandidate {
     node_idx: usize,
     action: MoveAction,
+    num_barriers: usize,
 }
 
 enum MoveIndex {
@@ -214,11 +231,19 @@ fn all_free_moves(
     move_idx: MoveIndex,
     my_idx: usize,
 ) -> impl Iterator<Item = MoveCandidate> {
+    let curr_board_idx = game.map.nodes[my_idx].1.board_idx as usize;
     game.graph
         .neighbor_indices(my_idx)
         .filter_map(move |(nbr_idx, dir)| {
             let (pos, node) = game.map.nodes.get(nbr_idx)?;
             if game.is_occupied(*pos) {
+                return None;
+            }
+            // Free moves cannot be used to break barriers.
+            if game
+                .barrier_index(curr_board_idx, node.board_idx as usize)
+                .is_some()
+            {
                 return None;
             }
             match node.terrain {
@@ -233,69 +258,128 @@ fn all_free_moves(
                             MoveAction::single_card(card_idx, vec![dir])
                         }
                     },
+                    num_barriers: 0,
                 }),
             }
         })
+}
+
+struct SeenMove {
+    node_idx: usize,
+    path: Vec<HexDirection>,
+    num_barriers: usize,
 }
 
 fn all_moves_helper(
     movement: &[u8; 3],
     game: &GameState,
     my_idx: usize,
-) -> Vec<(usize, Vec<HexDirection>)> {
+) -> Vec<SeenMove> {
     let max_move = *movement.iter().max().unwrap();
     struct QueueElem {
         idx: usize,
         path: Vec<HexDirection>,
         cost: [u8; 3],
+        barriers: Vec<usize>,
     }
     let mut queue = VecDeque::new();
     queue.push_back(QueueElem {
         idx: my_idx,
         path: Vec::new(),
         cost: [0u8; 3],
+        barriers: Vec::new(),
     });
     // Track paths for all seen hexes.
-    let mut seen = vec![(my_idx, Vec::<HexDirection>::new())];
-    while let Some(QueueElem { idx, path, cost }) = queue.pop_front() {
-        if path.len() >= max_move as usize {
+    let mut seen = vec![SeenMove {
+        node_idx: my_idx,
+        path: Vec::new(),
+        num_barriers: 0,
+    }];
+    while let Some(elem) = queue.pop_front() {
+        if elem.path.len() >= max_move as usize {
             continue;
         }
-        for (nbr_idx, dir) in game.graph.neighbor_indices(idx) {
+        let board_idx = game.map.nodes[elem.idx].1.board_idx as usize;
+        for (nbr_idx, dir) in game.graph.neighbor_indices(elem.idx) {
             let (pos, node) = game.map.nodes[nbr_idx];
-            if node.cost > max_move {
-                continue;
-            }
-            let terrain_idx = match node.terrain {
-                Terrain::Jungle => 0,
-                Terrain::Desert => 1,
-                Terrain::Water => 2,
-                _ => {
+            let nbr_board_idx = node.board_idx as usize;
+            // Check if we're crossing a barrier for the first time.
+            if let Some(barrier_idx) =
+                game.barrier_index(board_idx, nbr_board_idx)
+                && !elem.barriers.contains(&barrier_idx)
+            {
+                let barrier = &game.barriers[barrier_idx];
+                if barrier.cost > max_move {
                     continue;
                 }
-            };
-            if game.is_occupied(pos) {
-                continue;
+                let terrain_idx = match barrier.terrain {
+                    Terrain::Jungle => 0,
+                    Terrain::Desert => 1,
+                    Terrain::Water => 2,
+                    _ => {
+                        continue;
+                    }
+                };
+                let mut new_cost = elem.cost;
+                new_cost[terrain_idx] += barrier.cost;
+                if new_cost[terrain_idx] > movement[terrain_idx] {
+                    continue;
+                }
+                if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
+                    continue;
+                }
+                let mut new_path = elem.path.clone();
+                new_path.push(dir);
+                let mut new_barriers = elem.barriers.clone();
+                new_barriers.push(barrier_idx);
+                seen.push(SeenMove {
+                    node_idx: elem.idx,
+                    path: new_path.clone(),
+                    num_barriers: new_barriers.len(),
+                });
+                queue.push_back(QueueElem {
+                    idx: elem.idx,
+                    path: new_path,
+                    cost: new_cost,
+                    barriers: new_barriers,
+                });
+            } else {
+                if node.cost > max_move
+                    || game.is_occupied(pos)
+                    || seen.iter().any(|s| s.node_idx == nbr_idx)
+                {
+                    continue;
+                }
+                let terrain_idx = match node.terrain {
+                    Terrain::Jungle => 0,
+                    Terrain::Desert => 1,
+                    Terrain::Water => 2,
+                    _ => {
+                        continue;
+                    }
+                };
+                let mut new_cost = elem.cost;
+                new_cost[terrain_idx] += node.cost;
+                if new_cost[terrain_idx] > movement[terrain_idx] {
+                    continue;
+                }
+                if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
+                    continue;
+                }
+                let mut new_path = elem.path.clone();
+                new_path.push(dir);
+                seen.push(SeenMove {
+                    node_idx: nbr_idx,
+                    path: new_path.clone(),
+                    num_barriers: elem.barriers.len(),
+                });
+                queue.push_back(QueueElem {
+                    idx: nbr_idx,
+                    path: new_path,
+                    cost: new_cost,
+                    barriers: elem.barriers.clone(),
+                });
             }
-            if seen.iter().any(|(i, _)| *i == nbr_idx) {
-                continue;
-            }
-            let mut new_cost = cost;
-            new_cost[terrain_idx] += node.cost;
-            if new_cost[terrain_idx] > movement[terrain_idx] {
-                continue;
-            }
-            if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
-                continue;
-            }
-            let mut new_path = path.clone();
-            new_path.push(dir);
-            seen.push((nbr_idx, new_path.clone()));
-            queue.push_back(QueueElem {
-                idx: nbr_idx,
-                path: new_path,
-                cost: new_cost,
-            });
         }
     }
     // Drop the first seen entry because it's a null move.
@@ -320,9 +404,10 @@ fn all_moves_for_card<'a>(
     Box::new(
         all_moves_helper(&card.movement, game, my_idx)
             .into_iter()
-            .map(move |(node_idx, path)| MoveCandidate {
-                node_idx,
-                action: MoveAction::single_card(card_idx, path),
+            .map(move |seen| MoveCandidate {
+                node_idx: seen.node_idx,
+                action: MoveAction::single_card(card_idx, seen.path),
+                num_barriers: seen.num_barriers,
             }),
     )
 }
@@ -348,9 +433,10 @@ fn all_moves_for_token<'a>(
         _ => {}
     }
     Box::new(all_moves_helper(&movement, game, my_idx).into_iter().map(
-        move |(node_idx, path)| MoveCandidate {
-            node_idx,
-            action: MoveAction::single_token(token_idx, path),
+        move |seen| MoveCandidate {
+            node_idx: seen.node_idx,
+            action: MoveAction::single_token(token_idx, seen.path),
+            num_barriers: seen.num_barriers,
         },
     ))
 }
@@ -360,8 +446,37 @@ fn best_move_for_node(
     dir: HexDirection,
     game: &GameState,
     hand: &[Card],
+    board_idx: usize,
 ) -> Option<MoveCandidate> {
     let (pos, node) = game.map.nodes[node_idx];
+    // Check if we're breaking a barrier first.
+    if let Some(barrier_idx) =
+        game.barrier_index(board_idx, node.board_idx as usize)
+    {
+        let barrier = &game.barriers[barrier_idx];
+        // Only consider swamp barriers, as the other types are handled via
+        // regular card moves.
+        if !matches!(barrier.terrain, Terrain::Swamp) {
+            return None;
+        }
+        if barrier.cost > hand.len() as u8 {
+            return None;
+        }
+        // Pick card indices to discard, ordered by value.
+        let mut to_discard = hand.iter().enumerate().collect::<Vec<_>>();
+        to_discard.sort_unstable_by_key(|(_, card)| {
+            card.movement.iter().max().unwrap()
+        });
+        to_discard.truncate(barrier.cost as usize);
+        return Some(MoveCandidate {
+            node_idx,
+            action: MoveAction::multi_card(
+                to_discard.into_iter().map(|(i, _)| i).collect(),
+                dir,
+            ),
+            num_barriers: 1,
+        });
+    }
     if game.is_occupied(pos) {
         return None;
     }
@@ -400,6 +515,7 @@ fn best_move_for_node(
     Some(MoveCandidate {
         node_idx,
         action: MoveAction::multi_card(card_indices, dir),
+        num_barriers: 0,
     })
 }
 
@@ -478,10 +594,17 @@ impl Agent for GreedyAgent {
             .enumerate()
             .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx));
         // Now consider any multi-card moves (single-tile only).
+        let my_board_idx = game.map.nodes[my_idx].1.board_idx as usize;
         let moves =
             moves.chain(game.graph.neighbor_indices(my_idx).filter_map(
                 |(nbr_idx, dir)| {
-                    best_move_for_node(nbr_idx, dir, game, &me.hand)
+                    best_move_for_node(
+                        nbr_idx,
+                        dir,
+                        game,
+                        &me.hand,
+                        my_board_idx,
+                    )
                 },
             ));
         // Also consider any token-only moves.
@@ -492,9 +615,11 @@ impl Agent for GreedyAgent {
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
         let dists = &game.graph.dists;
-        let best_move = moves.min_by_key(|cand| dists[cand.node_idx]);
+        let best_move = moves.min_by_key(|cand| {
+            dists[cand.node_idx] - (cand.num_barriers * 10) as i32
+        });
         if let Some(cand) = &best_move
-            && dists[cand.node_idx] < dists[my_idx]
+            && (dists[cand.node_idx] < dists[my_idx] || cand.num_barriers > 0)
         {
             return PlayerAction::Move(best_move.unwrap().action);
         }

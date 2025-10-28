@@ -1,6 +1,6 @@
 use crate::cards::{BuyableCard, Card, CardAction};
 use crate::data::{
-    self, AxialCoord, BonusToken, HexDirection, HexMap, Node, Terrain,
+    self, AxialCoord, Barrier, BonusToken, HexDirection, HexMap, Node, Terrain,
 };
 use crate::graph::HexGraph;
 use crate::player::Player;
@@ -93,6 +93,7 @@ pub enum PlayerAction {
 #[derive(Serialize)]
 pub struct PlayerView<'a> {
     map: &'a HexMap,
+    barriers: &'a [Barrier],
     player: &'a Player,
     positions: Vec<AxialCoord>,
     bonuses: Vec<(&'a AxialCoord, usize)>,
@@ -109,6 +110,7 @@ pub struct GameState {
     pub map: HexMap,
     #[serde(skip)]
     pub graph: HexGraph,
+    pub barriers: Vec<Barrier>,
     pub players: Vec<Player>,
     pub shop: Vec<BuyableCard>,
     pub storage: Vec<BuyableCard>,
@@ -130,6 +132,20 @@ impl GameState {
         }
         let map = HexMap::create_named(preset)?;
         let graph = HexGraph::new(&map);
+        // Set up the barriers between boards.
+        let mut barrier_types = data::ALL_BARRIER_TYPES.to_vec();
+        barrier_types.shuffle(rng);
+        barrier_types.truncate(map.finish_idx as usize - 1);
+        let barriers = barrier_types
+            .into_iter()
+            .enumerate()
+            .map(|(i, (terrain, cost))| Barrier {
+                from_board: i,
+                to_board: i + 1,
+                terrain,
+                cost,
+            })
+            .collect();
         // Determine starting positions for players.
         let max_dist_indices = graph
             .dists
@@ -171,6 +187,7 @@ impl GameState {
         Ok(Self {
             map,
             graph,
+            barriers,
             players,
             shop: vec![
                 // Scout
@@ -246,6 +263,7 @@ impl GameState {
         };
         PlayerView {
             map: &self.map,
+            barriers: &self.barriers,
             player: &self.players[player_idx],
             positions: self.player_positions(),
             bonuses: self
@@ -470,39 +488,65 @@ impl GameState {
             return Err("Must move at least once".into());
         }
         let mut pos = self.curr_player().position;
+        let mut board_idx = self
+            .map
+            .node_at(pos)
+            .ok_or::<String>("Invalid position".into())?
+            .board_idx as usize;
         let mut move_cost: [u8; 3] = [0, 0, 0];
         let mut card_cost = 0;
+        let mut broken_barriers = Vec::new();
         let mut visited_cave = None;
         for dir in &mv.path {
             let mut next_pos = dir.neighbor_coord(pos);
             if let Some(next_node) = self.map.node_at(next_pos) {
-                match next_node.terrain {
-                    Terrain::Jungle => move_cost[0] += next_node.cost,
-                    Terrain::Desert => move_cost[1] += next_node.cost,
-                    Terrain::Water => move_cost[2] += next_node.cost,
-                    Terrain::Invalid => {
+                // Check for barriers first, as these act like pseudo-nodes.
+                let next_board_idx = next_node.board_idx as usize;
+                if let Some(barrier_idx) =
+                    self.barrier_index(board_idx, next_board_idx)
+                {
+                    let bar = &self.barriers[barrier_idx];
+                    match bar.terrain {
+                        Terrain::Jungle => move_cost[0] += bar.cost,
+                        Terrain::Desert => move_cost[1] += bar.cost,
+                        Terrain::Water => move_cost[2] += bar.cost,
+                        Terrain::Swamp => card_cost += bar.cost,
+                        _ => {
+                            return Err(format!("Invalid barrier: {bar:?}",));
+                        }
+                    }
+                    broken_barriers.push(barrier_idx);
+                } else {
+                    // Regular movement onto the next node.
+                    match next_node.terrain {
+                        Terrain::Jungle => move_cost[0] += next_node.cost,
+                        Terrain::Desert => move_cost[1] += next_node.cost,
+                        Terrain::Water => move_cost[2] += next_node.cost,
+                        Terrain::Invalid => {
+                            return Err(format!(
+                                "Cannot move onto invalid terrain {:?}",
+                                next_pos
+                            ));
+                        }
+                        Terrain::Cave => {
+                            visited_cave = Some(next_pos);
+                            next_pos = pos;
+                        }
+                        Terrain::Swamp => card_cost += next_node.cost,
+                        Terrain::Village => card_cost += next_node.cost,
+                    }
+                    if self.is_occupied(next_pos) {
                         return Err(format!(
-                            "Cannot move onto invalid terrain {:?}",
+                            "Cannot move to occupied node {:?}",
                             next_pos
                         ));
                     }
-                    Terrain::Cave => {
-                        visited_cave = Some(next_pos);
-                        next_pos = pos;
-                    }
-                    Terrain::Swamp => card_cost += next_node.cost,
-                    Terrain::Village => card_cost += next_node.cost,
+                    pos = next_pos;
                 }
+                board_idx = next_board_idx;
             } else {
                 return Err(format!("No node at position {:?}", next_pos));
             }
-            if self.is_occupied(next_pos) {
-                return Err(format!(
-                    "Cannot move to occupied node {:?}",
-                    next_pos
-                ));
-            }
-            pos = next_pos;
         }
 
         // Validate cave visit (doesn't update player position or cards).
@@ -529,6 +573,24 @@ impl GameState {
             }
             card_cost = 0;
             move_cost = [0, 0, 0];
+            if let Some(barrier_idx) = broken_barriers.first() {
+                let barrier = &self.barriers[*barrier_idx];
+                match barrier.terrain {
+                    // Movement-based barriers cannot be broken with a free move.
+                    Terrain::Jungle | Terrain::Desert | Terrain::Water => {
+                        return Err(
+                            "Cannot break barriers with a free move".into()
+                        );
+                    }
+                    // Swamp barriers still require the card cost.
+                    Terrain::Swamp => {
+                        card_cost = barrier.cost;
+                    }
+                    _ => {
+                        return Err(format!("Invalid barrier: {barrier:?}"));
+                    }
+                }
+            }
         }
 
         let mut is_single_use = false;
@@ -667,6 +729,11 @@ impl GameState {
         for idx in mv.tokens.iter().rev() {
             player.tokens.swap_remove(*idx);
         }
+        // Remove any broken barriers from the game. Assumes barriers are in
+        // sorted order.
+        for idx in broken_barriers.iter().rev() {
+            self.barriers.swap_remove(*idx);
+        }
         Ok(())
     }
 
@@ -780,6 +847,7 @@ impl GameState {
             (dir, *pos, node)
         })
     }
+
     /// Get the neighboring nodes of a given coordinate.
     pub fn neighbors_of(
         &self,
@@ -791,6 +859,21 @@ impl GameState {
                 .binary_search_by_key(&coord, |(c, _)| *c)
                 .unwrap_or(usize::MAX),
         )
+    }
+
+    /// Get the barrier index (if any) between two boards.
+    pub fn barrier_index(
+        &self,
+        from_board: usize,
+        to_board: usize,
+    ) -> Option<usize> {
+        if from_board >= to_board {
+            return None;
+        }
+        self.barriers.iter().position(|b| {
+            (b.from_board == from_board && b.to_board == to_board)
+                || (b.from_board == to_board && b.to_board == from_board)
+        })
     }
 }
 
