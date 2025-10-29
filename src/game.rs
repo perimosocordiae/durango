@@ -503,6 +503,7 @@ impl GameState {
         if mv.path.is_empty() {
             return Err("Must move at least once".into());
         }
+        let tokens = &self.curr_player().tokens;
         let mut pos = self.curr_player().position;
         let mut board_idx = self
             .map
@@ -554,7 +555,12 @@ impl GameState {
                         Terrain::Swamp => card_cost += next_node.cost,
                         Terrain::Village => card_cost += next_node.cost,
                     }
-                    if self.is_occupied(next_pos) {
+                    if self.is_occupied(next_pos)
+                        && !mv
+                            .tokens
+                            .iter()
+                            .any(|&i| matches!(tokens[i], BonusToken::ShareHex))
+                    {
                         return Err(format!(
                             "Cannot move to occupied node {:?}",
                             next_pos
@@ -644,7 +650,6 @@ impl GameState {
                 ));
             }
             let hand = &self.curr_player().hand;
-            let tokens = &self.curr_player().tokens;
 
             // Card movement.
             if !mv.cards.is_empty() {
@@ -685,45 +690,56 @@ impl GameState {
                         .any(|&i| matches!(tokens[i], BonusToken::DoubleUse));
             } else if !mv.tokens.is_empty() {
                 // Token-only movement.
-                if mv.tokens.len() != 1 {
-                    // TODO: allow a move token plus ShareHex.
-                    return Err(format!(
-                        "Must use a single token to move, got {}",
-                        mv.tokens.len()
-                    ));
+                let mut num_share_hex = 0;
+                for &i in &mv.tokens {
+                    match &tokens[i] {
+                        BonusToken::Jungle(m) => {
+                            if move_cost[0] > *m {
+                                return Err(format!(
+                                    "Need {}+ jungle movement, but token has {m}",
+                                    move_cost[0]
+                                ));
+                            }
+                        }
+                        BonusToken::Desert(m) => {
+                            if move_cost[1] > *m {
+                                return Err(format!(
+                                    "Need {}+ desert movement, but token has {m}",
+                                    move_cost[1]
+                                ));
+                            }
+                        }
+                        BonusToken::Water(m) => {
+                            if move_cost[2] > *m {
+                                return Err(format!(
+                                    "Need {}+ water movement, but token has {m}",
+                                    move_cost[2]
+                                ));
+                            }
+                        }
+                        BonusToken::FreeMove => {}
+                        BonusToken::ShareHex => {
+                            num_share_hex += 1;
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Cannot use token {:?} to move",
+                                tokens[mv.tokens[0]]
+                            ));
+                        }
+                    }
                 }
-                match &tokens[mv.tokens[0]] {
-                    BonusToken::Jungle(m) => {
-                        if move_cost[0] > *m {
-                            return Err(format!(
-                                "Need {}+ jungle movement, but token has {m}",
-                                move_cost[0]
-                            ));
-                        }
-                    }
-                    BonusToken::Desert(m) => {
-                        if move_cost[1] > *m {
-                            return Err(format!(
-                                "Need {}+ desert movement, but token has {m}",
-                                move_cost[1]
-                            ));
-                        }
-                    }
-                    BonusToken::Water(m) => {
-                        if move_cost[2] > *m {
-                            return Err(format!(
-                                "Need {}+ water movement, but token has {m}",
-                                move_cost[2]
-                            ));
-                        }
-                    }
-                    BonusToken::FreeMove => {}
-                    _ => {
-                        return Err(format!(
-                            "Cannot use token {:?} to move",
-                            tokens[mv.tokens[0]]
-                        ));
-                    }
+                if num_share_hex > 1 {
+                    return Err(
+                        "Can only use one ShareHex token per move".into()
+                    );
+                }
+                let num_move_tokens = mv.tokens.len() - num_share_hex;
+                if num_move_tokens != 1 {
+                    return Err(format!(
+                        "Must use exactly one movement token to move, got {}",
+                        num_move_tokens
+                    ));
                 }
             } else {
                 return Err("Must use cards or tokens to move".into());
