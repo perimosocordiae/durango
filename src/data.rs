@@ -119,7 +119,7 @@ pub enum BonusToken {
 impl BonusToken {
     pub fn gold_value(&self) -> u8 {
         match self {
-            BonusToken::Desert(v) => *v,
+            BonusToken::Desert(v) => *v * 2,
             _ => 0,
         }
     }
