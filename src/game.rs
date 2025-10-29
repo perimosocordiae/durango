@@ -105,6 +105,13 @@ pub struct PlayerView<'a> {
     winner: Option<usize>,
 }
 
+/// Result of performing an action via game.process_action().
+pub enum ActionOutcome {
+    Ok,
+    IgnoreMoveIdx(usize),
+    GameOver,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GameState {
     pub map: HexMap,
@@ -326,15 +333,19 @@ impl GameState {
             .collect()
     }
 
-    /// Process the specified `action` for the current player. Returns true if
-    /// the game is over.
+    /// Process the specified `action` for the current player.
     pub fn process_action(
         &mut self,
         action: &PlayerAction,
-    ) -> Result<bool, String> {
+    ) -> Result<ActionOutcome, String> {
+        let mut outcome = ActionOutcome::Ok;
         match action {
             PlayerAction::BuyCard(buy) => self.handle_buy(buy)?,
-            PlayerAction::Move(mv) => self.handle_move(mv)?,
+            PlayerAction::Move(mv) => {
+                if let Some(idx) = self.handle_move(mv)? {
+                    outcome = ActionOutcome::IgnoreMoveIdx(idx);
+                }
+            }
             PlayerAction::Draw(draw) => {
                 self.handle_draw(draw, &mut rand::rng())?
             }
@@ -349,11 +360,13 @@ impl GameState {
                 self.curr_player_idx %= self.players.len();
                 if self.curr_player_idx == 0 {
                     self.round_idx += 1;
-                    return Ok(self.any_finished_player());
+                    if self.any_finished_player() {
+                        return Ok(ActionOutcome::GameOver);
+                    }
                 }
             }
         }
-        Ok(false)
+        Ok(outcome)
     }
 
     pub fn has_open_shop(&self) -> bool {
@@ -482,7 +495,11 @@ impl GameState {
         Ok(())
     }
 
-    fn handle_move(&mut self, mv: &MoveAction) -> Result<(), String> {
+    /// Returns an optional index into mv.path to ignore for movement.
+    fn handle_move(
+        &mut self,
+        mv: &MoveAction,
+    ) -> Result<Option<usize>, String> {
         if mv.path.is_empty() {
             return Err("Must move at least once".into());
         }
@@ -494,9 +511,10 @@ impl GameState {
             .board_idx as usize;
         let mut move_cost: [u8; 3] = [0, 0, 0];
         let mut card_cost = 0;
-        let mut broken_barriers = Vec::new();
+        let mut broken_barrier = None;
         let mut visited_cave = None;
-        for dir in &mv.path {
+        let mut ignore_idx = None;
+        for (path_idx, dir) in mv.path.iter().enumerate() {
             let mut next_pos = dir.neighbor_coord(pos);
             if let Some(next_node) = self.map.node_at(next_pos) {
                 // Check for barriers first, as these act like pseudo-nodes.
@@ -514,7 +532,8 @@ impl GameState {
                             return Err(format!("Invalid barrier: {bar:?}",));
                         }
                     }
-                    broken_barriers.push(barrier_idx);
+                    broken_barrier = Some(barrier_idx);
+                    ignore_idx = Some(path_idx);
                 } else {
                     // Regular movement onto the next node.
                     match next_node.terrain {
@@ -529,6 +548,7 @@ impl GameState {
                         }
                         Terrain::Cave => {
                             visited_cave = Some(next_pos);
+                            ignore_idx = Some(path_idx);
                             next_pos = pos;
                         }
                         Terrain::Swamp => card_cost += next_node.cost,
@@ -559,7 +579,8 @@ impl GameState {
             if self.curr_player().visited_caves.contains(&cave_pos) {
                 return Err("Already visited this cave, must move away before returning".into());
             }
-            return self.give_bonus(cave_pos);
+            self.give_bonus(cave_pos)?;
+            return Ok(ignore_idx);
         }
 
         // Handle cards/tokens that provide a free move.
@@ -572,8 +593,8 @@ impl GameState {
             }
             card_cost = 0;
             move_cost = [0, 0, 0];
-            if let Some(barrier_idx) = broken_barriers.first() {
-                let barrier = &self.barriers[*barrier_idx];
+            if let Some(barrier_idx) = broken_barrier {
+                let barrier = &self.barriers[barrier_idx];
                 match barrier.terrain {
                     // Movement-based barriers cannot be broken with a free move.
                     Terrain::Jungle | Terrain::Desert | Terrain::Water => {
@@ -728,12 +749,11 @@ impl GameState {
         for idx in mv.tokens.iter().rev() {
             player.tokens.swap_remove(*idx);
         }
-        // Remove any broken barriers from the game. Assumes barriers are in
-        // sorted order.
-        for idx in broken_barriers.iter().rev() {
-            player.broken_barriers.push(self.barriers.swap_remove(*idx));
+        // Remove broken barriers from the game.
+        if let Some(idx) = broken_barrier {
+            player.broken_barriers.push(self.barriers.swap_remove(idx));
         }
-        Ok(())
+        Ok(ignore_idx)
     }
 
     fn handle_draw(

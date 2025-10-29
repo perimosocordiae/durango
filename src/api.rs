@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     agent::{Agent, create_agent},
     data::AxialCoord,
-    game::{GameState, PlayerAction},
+    game::{ActionOutcome, GameState, PlayerAction},
 };
 
 /// Parameters for game initialization.
@@ -45,7 +45,17 @@ impl DurangoAPI {
         action: &PlayerAction,
         mut notice_cb: F,
     ) -> Result<()> {
-        self.game_over = self.state.process_action(action)?;
+        // Take the action.
+        let mut ignored_idx = None;
+        match self.state.process_action(action)? {
+            ActionOutcome::Ok => {}
+            ActionOutcome::GameOver => {
+                self.game_over = true;
+            }
+            ActionOutcome::IgnoreMoveIdx(idx) => {
+                ignored_idx = Some(idx);
+            }
+        }
         // If this was a move, update history.
         if let PlayerAction::Move(mv) = action {
             let my_turns = &mut self.history[self.state.curr_player_idx];
@@ -55,9 +65,11 @@ impl DurangoAPI {
                 my_turns.push(vec![]);
             }
             let curr_turn = my_turns.get_mut(self.state.round_idx).unwrap();
-            for dir in &mv.path {
-                prev_pos = dir.neighbor_coord(prev_pos);
-                curr_turn.push(prev_pos);
+            for (i, dir) in mv.path.iter().enumerate() {
+                if ignored_idx != Some(i) {
+                    prev_pos = dir.neighbor_coord(prev_pos);
+                    curr_turn.push(prev_pos);
+                }
             }
         }
         // Notify all human players of the action.
@@ -220,4 +232,24 @@ fn exercise_api() {
         (2..=6).contains(&num_notices),
         "num_notices={num_notices} out of bounds [2, 6]",
     );
+}
+
+#[test]
+fn self_play() {
+    let players = vec![
+        PlayerInfo::ai("bot1".into(), 1),
+        PlayerInfo::ai("bot2".into(), 1),
+    ];
+    let mut game: DurangoAPI =
+        GameAPI::init(&players, Some(r#"{"named_layout": "easy1"}"#)).unwrap();
+    // Run until game over
+    game.start(1234, |_, _| {}).unwrap();
+    assert!(game.is_game_over());
+    // Check that the history matches the final positions
+    let final_positions = game.state.player_positions();
+    for (idx, pos) in final_positions.iter().enumerate() {
+        let history = &game.history[idx];
+        let last_pos = history.last().unwrap().last().unwrap();
+        assert_eq!(pos, last_pos);
+    }
 }

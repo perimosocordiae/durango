@@ -1,6 +1,7 @@
 use clap::Parser;
 use durango::agent;
 use durango::game;
+use durango::game::ActionOutcome;
 
 #[derive(Parser)]
 struct Args {
@@ -78,7 +79,7 @@ fn run_game(args: &Args) -> Option<RunInfo> {
             println!(" action: {:?}", &act);
         }
         match g.process_action(&act) {
-            Ok(true) => {
+            Ok(ActionOutcome::GameOver) => {
                 let finishers = g.players_at_finish();
                 let rounds = g.round_idx;
                 if !args.quiet {
@@ -92,7 +93,7 @@ fn run_game(args: &Args) -> Option<RunInfo> {
                     winner: finishers[0],
                 });
             }
-            Ok(false) => {}
+            Ok(_) => {}
             Err(e) => {
                 println!(
                     "Error processing {act:?} for player {}:\n{e}",
