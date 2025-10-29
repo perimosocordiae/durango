@@ -144,6 +144,7 @@ impl GameState {
                 to_board: i + 1,
                 terrain,
                 cost,
+                edges: edges_between_boards(&map, &graph, i, i + 1),
             })
             .collect();
         // Determine starting positions for players.
@@ -882,6 +883,29 @@ fn take_card(cards: &mut Vec<BuyableCard>, idx: usize) {
             cards.swap_remove(idx);
         }
     }
+}
+
+/// Finds all edges between two boards.
+fn edges_between_boards(
+    map: &HexMap,
+    graph: &HexGraph,
+    from_board: usize,
+    to_board: usize,
+) -> Vec<(AxialCoord, HexDirection)> {
+    let mut edges = Vec::new();
+    for (node_idx, (coord, node)) in map.all_nodes().enumerate() {
+        if node.board_idx as usize != from_board {
+            continue;
+        }
+        for (nbr_idx, dir) in graph.neighbor_indices(node_idx) {
+            if let Some(nbr_node) = map.node_at_idx(nbr_idx)
+                && nbr_node.board_idx as usize == to_board
+            {
+                edges.push((*coord, dir));
+            }
+        }
+    }
+    edges
 }
 
 //////////////////////////

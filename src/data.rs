@@ -191,6 +191,10 @@ pub struct Barrier {
     pub to_board: usize,
     pub terrain: Terrain,
     pub cost: u8,
+    // Edges where this barrier exists. This is technically redundant info, as
+    // it can be derived from from_board and to_board, but it's convenient to
+    // store it to avoid recomputation.
+    pub edges: Vec<(AxialCoord, HexDirection)>,
 }
 
 pub(crate) static ALL_BARRIER_TYPES: [(Terrain, u8); 6] = [
