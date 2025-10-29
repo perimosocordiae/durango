@@ -110,7 +110,7 @@ fn run_game(args: &Args) -> Option<RunInfo> {
     for i in 0..args.players {
         println!(" - {}", g.players[i].debug_str(i));
     }
-    println!("Scores: {:?}", g.player_scores());
+    println!("Scores: {:?}\n", g.player_scores());
     None
 }
 
@@ -118,34 +118,72 @@ const ALL_PRESETS: &[&str] = &[
     "first", "easy1", "easy2", "medium1", "medium2", "hard1", "hard2",
 ];
 
+struct Stats {
+    count: usize,
+    min: usize,
+    max: usize,
+    sum: usize,
+    sum_sq: usize,
+}
+impl Stats {
+    fn new() -> Self {
+        Stats {
+            count: 0,
+            min: usize::MAX,
+            max: usize::MIN,
+            sum: 0,
+            sum_sq: 0,
+        }
+    }
+
+    fn add(&mut self, value: usize) {
+        self.count += 1;
+        if value < self.min {
+            self.min = value;
+        }
+        if value > self.max {
+            self.max = value;
+        }
+        self.sum += value;
+        self.sum_sq += value * value;
+    }
+
+    fn report(&self, name: &str) {
+        let mean = self.sum as f64 / self.count as f64;
+        let variance = (self.sum_sq as f64 / self.count as f64) - (mean * mean);
+        println!(
+            "{name}: min={}, max={}, mean={mean:.2}, stddev={:.2}",
+            self.min,
+            self.max,
+            variance.sqrt()
+        );
+    }
+}
+
 fn main() {
     let mut args = Args::parse();
     let all_presets = args.preset == "all";
-    let mut num_success = 0;
-    let mut sum_rounds = 0;
-    let mut sum_actions = 0;
+    let mut round_stats = Stats::new();
+    let mut action_stats = Stats::new();
     let mut win_counts = vec![0; args.players];
     for i in 0..args.repeats {
         if all_presets {
             args.preset = ALL_PRESETS[i % ALL_PRESETS.len()].to_string();
         }
         if let Some(info) = run_game(&args) {
-            num_success += 1;
-            sum_rounds += info.rounds;
-            sum_actions += info.actions;
+            round_stats.add(info.rounds);
+            action_stats.add(info.actions);
             win_counts[info.winner] += 1;
         }
     }
     println!(
         "{} out of {} games were successful",
-        num_success, args.repeats
+        round_stats.count, args.repeats
     );
-    let denom = num_success.max(1) as f64;
-    println!(
-        "Average rounds: {:.1}, actions: {:.1}",
-        sum_rounds as f64 / denom,
-        sum_actions as f64 / denom
-    );
+    if round_stats.count > 0 {
+        round_stats.report("Rounds ");
+        action_stats.report("Actions");
+    }
     for (i, count) in win_counts.iter().enumerate() {
         println!("Player {i}: {count} wins");
     }
