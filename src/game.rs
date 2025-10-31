@@ -555,7 +555,8 @@ impl GameState {
                         Terrain::Swamp => card_cost += next_node.cost,
                         Terrain::Village => card_cost += next_node.cost,
                     }
-                    if self.is_occupied(next_pos)
+                    if visited_cave.is_none()
+                        && self.is_occupied(next_pos)
                         && !mv
                             .tokens
                             .iter()
