@@ -417,7 +417,8 @@ impl GameState {
             } else {
                 return Err(format!(
                     "Not enough gold: have {}, need {}",
-                    bucks, bcard.cost
+                    bucks / 2,
+                    bcard.cost / 2
                 ));
             }
         }
