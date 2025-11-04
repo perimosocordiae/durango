@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     agent::{Agent, create_agent},
     cards::{BuyableCard, Card},
-    data::{AxialCoord, Barrier, HexMap},
+    data::{AxialCoord, Barrier, BonusToken, HexMap},
     game::{ActionOutcome, GameState, PlayerAction},
     player::Player,
 };
@@ -16,15 +16,23 @@ struct GameParams {
     named_layout: String,
 }
 
+/// A view of another player's public information.
+#[derive(Serialize)]
+pub struct OtherPlayerView<'a> {
+    player_idx: usize,
+    position: AxialCoord,
+    hand: &'a [Card],
+    tokens: &'a [BonusToken],
+}
+
 /// A view of the game state for a specific player.
 #[derive(Serialize)]
 pub struct PlayerView<'a> {
     map: &'a HexMap,
     barriers: &'a [Barrier],
     player: &'a Player,
-    positions: Vec<AxialCoord>,
+    other_players: Vec<OtherPlayerView<'a>>,
     bonuses: Vec<(&'a AxialCoord, usize)>,
-    hand: &'a [Card],
     shop: &'a [BuyableCard],
     storage: &'a [BuyableCard],
     round_idx: usize,
@@ -65,13 +73,29 @@ impl DurangoAPI {
         } else {
             None
         };
+        let other_players = game
+            .players
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, p)| {
+                if idx != player_idx {
+                    Some(OtherPlayerView {
+                        player_idx: idx,
+                        position: p.position,
+                        hand: &p.hand,
+                        tokens: &p.tokens,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
         let view = PlayerView {
             map: &game.map,
             barriers: &game.barriers,
             player: &game.players[player_idx],
-            positions: game.player_positions(),
+            other_players,
             bonuses: game.bonus_counts(),
-            hand: &game.players[player_idx].hand,
             shop: &game.shop,
             storage: &game.storage,
             round_idx: game.round_idx,
