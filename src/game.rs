@@ -74,9 +74,9 @@ impl MoveAction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum DrawAction {
-    Card(usize),
-    Token(usize),
+pub struct DrawAction {
+    pub card: Option<usize>,
+    pub token: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -781,60 +781,77 @@ impl GameState {
     ) -> Result<(), String> {
         let hand = &self.curr_player().hand;
         let hand_size = hand.len();
-        match draw {
-            DrawAction::Card(i) => {
-                let card = hand.get(*i).ok_or(format!(
-                    "Invalid card index {i}, given {hand_size} cards in hand"
+        let tokens = &self.curr_player().tokens;
+        let num_tokens = tokens.len();
+        if let Some(i) = draw.card {
+            let card = hand.get(i).ok_or(format!(
+                "Invalid card index {i}, given {hand_size} cards in hand"
+            ))?;
+            let mut is_single_use = card.single_use;
+            // Check for a DoubleUse token. Any other tokens are not allowed.
+            if let Some(tidx) = draw.token {
+                let tok = tokens.get(tidx).ok_or(format!(
+                    "Invalid token index {tidx}, given {num_tokens} tokens"
                 ))?;
-                let is_single_use = card.single_use;
-                match card.action {
-                    Some(CardAction::Draw(n)) => {
-                        self.players[self.curr_player_idx]
-                            .fill_hand(hand_size + n, rng);
-                    }
-                    Some(CardAction::DrawAndTrash(n)) => {
-                        self.players[self.curr_player_idx]
-                            .fill_hand(hand_size + n, rng);
-                        self.players[self.curr_player_idx].trashes += n;
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Cannot use card {card:?} to draw more cards"
-                        ));
-                    }
-                }
-                if is_single_use {
-                    self.players[self.curr_player_idx].trash_cards(&[*i]);
+                if matches!(tok, BonusToken::DoubleUse) {
+                    is_single_use = false;
                 } else {
-                    self.players[self.curr_player_idx].mark_played(&[*i]);
+                    return Err(format!(
+                        "Cannot use token {tok:?} when drawing cards with a card",
+                    ));
                 }
             }
-            DrawAction::Token(i) => {
-                let tokens = &self.curr_player().tokens;
-                let num_tokens = tokens.len();
-                let tok = tokens.get(*i).ok_or(format!(
-                    "Invalid token index {i}, given {num_tokens} tokens"
-                ))?;
-                match tok {
-                    BonusToken::DrawCard => {
-                        self.players[self.curr_player_idx]
-                            .fill_hand(hand_size + 1, rng);
-                    }
-                    BonusToken::TrashCard => {
-                        self.players[self.curr_player_idx].trashes += 1;
-                    }
-                    BonusToken::ReplaceHand => {
-                        self.players[self.curr_player_idx].replace_hand(rng);
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Cannot use token {tok:?} to draw cards"
-                        ));
-                    }
+            match card.action {
+                Some(CardAction::Draw(n)) => {
+                    self.players[self.curr_player_idx]
+                        .fill_hand(hand_size + n, rng);
                 }
-                // Remove the used token.
-                self.players[self.curr_player_idx].tokens.swap_remove(*i);
+                Some(CardAction::DrawAndTrash(n)) => {
+                    self.players[self.curr_player_idx]
+                        .fill_hand(hand_size + n, rng);
+                    self.players[self.curr_player_idx].trashes += n;
+                }
+                _ => {
+                    return Err(format!(
+                        "Cannot use card {card:?} to draw more cards"
+                    ));
+                }
             }
+            if is_single_use {
+                self.players[self.curr_player_idx].trash_cards(&[i]);
+            } else {
+                self.players[self.curr_player_idx].mark_played(&[i]);
+            }
+            if let Some(tidx) = draw.token {
+                self.players[self.curr_player_idx].tokens.swap_remove(tidx);
+            }
+        } else if let Some(i) = draw.token {
+            let tok = tokens.get(i).ok_or(format!(
+                "Invalid token index {i}, given {num_tokens} tokens"
+            ))?;
+            match tok {
+                BonusToken::DrawCard => {
+                    self.players[self.curr_player_idx]
+                        .fill_hand(hand_size + 1, rng);
+                }
+                BonusToken::TrashCard => {
+                    self.players[self.curr_player_idx].trashes += 1;
+                }
+                BonusToken::ReplaceHand => {
+                    self.players[self.curr_player_idx].replace_hand(rng);
+                }
+                _ => {
+                    return Err(format!(
+                        "Cannot use token {tok:?} to draw cards"
+                    ));
+                }
+            }
+            // Remove the used token.
+            self.players[self.curr_player_idx].tokens.swap_remove(i);
+        } else {
+            return Err(
+                "Must specify a card or token to use for drawing cards".into(),
+            );
         }
         Ok(())
     }

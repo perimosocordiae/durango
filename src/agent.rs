@@ -165,19 +165,27 @@ fn valid_buy_actions(game: &GameState) -> Vec<BuyCardAction> {
 
 fn valid_draw_actions(game: &GameState) -> Vec<DrawAction> {
     let me = game.curr_player();
+    let double_use = me
+        .tokens
+        .iter()
+        .position(|t| matches!(t, BonusToken::DoubleUse));
     me.hand
         .iter()
         .enumerate()
         .filter_map(|(i, c)| match c.action {
             Some(CardAction::Draw(_)) | Some(CardAction::DrawAndTrash(_)) => {
-                Some(DrawAction::Card(i))
+                Some(DrawAction {
+                    card: Some(i),
+                    token: if c.single_use { double_use } else { None },
+                })
             }
             _ => None,
         })
         .chain(me.tokens.iter().enumerate().filter_map(|(i, t)| match t {
-            BonusToken::DrawCard | BonusToken::TrashCard => {
-                Some(DrawAction::Token(i))
-            }
+            BonusToken::DrawCard | BonusToken::TrashCard => Some(DrawAction {
+                card: None,
+                token: Some(i),
+            }),
             _ => None,
         }))
         .collect()
@@ -682,7 +690,10 @@ impl Agent for GreedyAgent {
             .iter()
             .position(|t| matches!(t, BonusToken::ReplaceHand))
         {
-            return PlayerAction::Draw(DrawAction::Token(idx));
+            return PlayerAction::Draw(DrawAction {
+                card: None,
+                token: Some(idx),
+            });
         }
 
         // We're stuck, so try a lateral move if possible.
