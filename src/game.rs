@@ -1,4 +1,4 @@
-use crate::cards::{BuyableCard, Card, CardAction};
+use crate::cards::{BuyableCard, CardAction};
 use crate::data::{
     self, AxialCoord, Barrier, BonusToken, HexDirection, HexMap, Node, Terrain,
 };
@@ -87,22 +87,6 @@ pub enum PlayerAction {
     Trash(Vec<usize>),
     Discard(Vec<usize>),
     FinishTurn,
-}
-
-/// A view of the game state for a specific player.
-#[derive(Serialize)]
-pub struct PlayerView<'a> {
-    map: &'a HexMap,
-    barriers: &'a [Barrier],
-    player: &'a Player,
-    positions: Vec<AxialCoord>,
-    bonuses: Vec<(&'a AxialCoord, usize)>,
-    hand: &'a [Card],
-    shop: &'a [BuyableCard],
-    storage: &'a [BuyableCard],
-    round_idx: usize,
-    curr_player_idx: usize,
-    winner: Option<usize>,
 }
 
 /// Result of performing an action via game.process_action().
@@ -258,34 +242,12 @@ impl GameState {
         self.players.iter().map(|p| p.position).collect()
     }
 
-    /// Returns a view of the game state for the specified player.
-    pub fn view_for_player(&'_ self, player_idx: usize) -> PlayerView<'_> {
-        let winner = if self.is_game_over() {
-            self.player_scores()
-                .iter()
-                .enumerate()
-                .max_by_key(|&(_, score)| score)
-                .map(|(i, _)| i)
-        } else {
-            None
-        };
-        PlayerView {
-            map: &self.map,
-            barriers: &self.barriers,
-            player: &self.players[player_idx],
-            positions: self.player_positions(),
-            bonuses: self
-                .bonuses
-                .iter()
-                .map(|(pos, toks)| (pos, toks.len()))
-                .collect(),
-            hand: &self.players[player_idx].hand,
-            shop: &self.shop,
-            storage: &self.storage,
-            round_idx: self.round_idx,
-            curr_player_idx: self.curr_player_idx,
-            winner,
-        }
+    /// Positions and counts of all cave bonuses in the game.
+    pub fn bonus_counts(&self) -> Vec<(&AxialCoord, usize)> {
+        self.bonuses
+            .iter()
+            .map(|(pos, toks)| (pos, toks.len()))
+            .collect()
     }
 
     /// Is the specified node occupied by a player other than the current player?

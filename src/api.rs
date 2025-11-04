@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{Agent, create_agent},
-    data::AxialCoord,
+    cards::{BuyableCard, Card},
+    data::{AxialCoord, Barrier, HexMap},
     game::{ActionOutcome, GameState, PlayerAction},
+    player::Player,
 };
 
 /// Parameters for game initialization.
@@ -12,6 +14,22 @@ use crate::{
 struct GameParams {
     // Named layout to use, e.g. "easy1"
     named_layout: String,
+}
+
+/// A view of the game state for a specific player.
+#[derive(Serialize)]
+pub struct PlayerView<'a> {
+    map: &'a HexMap,
+    barriers: &'a [Barrier],
+    player: &'a Player,
+    positions: Vec<AxialCoord>,
+    bonuses: Vec<(&'a AxialCoord, usize)>,
+    hand: &'a [Card],
+    shop: &'a [BuyableCard],
+    storage: &'a [BuyableCard],
+    round_idx: usize,
+    curr_player_idx: usize,
+    winner: Option<usize>,
 }
 
 /// Final data to store for viewing completed games.
@@ -37,8 +55,30 @@ pub struct DurangoAPI {
 
 impl DurangoAPI {
     fn view(&self, player_idx: usize) -> Result<String> {
-        let data = self.state.view_for_player(player_idx);
-        Ok(serde_json::to_string(&data)?)
+        let game = &self.state;
+        let winner = if game.is_game_over() {
+            game.player_scores()
+                .iter()
+                .enumerate()
+                .max_by_key(|&(_, score)| score)
+                .map(|(i, _)| i)
+        } else {
+            None
+        };
+        let view = PlayerView {
+            map: &game.map,
+            barriers: &game.barriers,
+            player: &game.players[player_idx],
+            positions: game.player_positions(),
+            bonuses: game.bonus_counts(),
+            hand: &game.players[player_idx].hand,
+            shop: &game.shop,
+            storage: &game.storage,
+            round_idx: game.round_idx,
+            curr_player_idx: game.curr_player_idx,
+            winner,
+        };
+        Ok(serde_json::to_string(&view)?)
     }
     fn do_action<F: FnMut(&str, &str)>(
         &mut self,
