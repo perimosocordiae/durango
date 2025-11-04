@@ -6,7 +6,6 @@ use crate::{
     cards::{BuyableCard, Card},
     data::{AxialCoord, Barrier, BonusToken, HexMap},
     game::{ActionOutcome, GameState, PlayerAction},
-    player::Player,
 };
 
 /// Parameters for game initialization.
@@ -18,11 +17,27 @@ struct GameParams {
 
 /// A view of another player's public information.
 #[derive(Serialize)]
-pub struct OtherPlayerView<'a> {
+pub struct OtherPlayer<'a> {
     player_idx: usize,
     position: AxialCoord,
     hand: &'a [Card],
     tokens: &'a [BonusToken],
+}
+
+/// A view of my player's visible information.
+#[derive(Serialize)]
+pub struct MyPlayer<'a> {
+    // Public info (matches OtherPlayer).
+    player_idx: usize,
+    position: AxialCoord,
+    hand: &'a [Card],
+    tokens: &'a [BonusToken],
+    // Private info for my eyes only.
+    played: &'a [Card],
+    deck_size: usize,
+    discard_size: usize,
+    trashes: usize,
+    broken_barriers: &'a [Barrier],
 }
 
 /// A view of the game state for a specific player.
@@ -30,8 +45,8 @@ pub struct OtherPlayerView<'a> {
 pub struct PlayerView<'a> {
     map: &'a HexMap,
     barriers: &'a [Barrier],
-    player: &'a Player,
-    other_players: Vec<OtherPlayerView<'a>>,
+    my_player: MyPlayer<'a>,
+    other_players: Vec<OtherPlayer<'a>>,
     bonuses: Vec<(&'a AxialCoord, usize)>,
     shop: &'a [BuyableCard],
     storage: &'a [BuyableCard],
@@ -73,13 +88,25 @@ impl DurangoAPI {
         } else {
             None
         };
+        let player = &game.players[player_idx];
+        let my_player = MyPlayer {
+            player_idx,
+            position: player.position,
+            hand: &player.hand,
+            tokens: &player.tokens,
+            played: &player.played,
+            deck_size: player.deck_size(),
+            discard_size: player.discard.len(),
+            trashes: player.trashes,
+            broken_barriers: &player.broken_barriers,
+        };
         let other_players = game
             .players
             .iter()
             .enumerate()
             .filter_map(|(idx, p)| {
                 if idx != player_idx {
-                    Some(OtherPlayerView {
+                    Some(OtherPlayer {
                         player_idx: idx,
                         position: p.position,
                         hand: &p.hand,
@@ -93,7 +120,7 @@ impl DurangoAPI {
         let view = PlayerView {
             map: &game.map,
             barriers: &game.barriers,
-            player: &game.players[player_idx],
+            my_player,
             other_players,
             bonuses: game.bonus_counts(),
             shop: &game.shop,

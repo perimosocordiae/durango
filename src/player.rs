@@ -117,6 +117,10 @@ impl Player {
             + self.discard.len()
     }
 
+    pub fn deck_size(&self) -> usize {
+        self.deck.len()
+    }
+
     /// Total movement points across all cards.
     pub fn sum_movement(&self) -> [u8; 3] {
         let mut sums = [0u8; 3];
