@@ -1,4 +1,5 @@
 use crate::agent::common::*;
+use crate::cards::Card;
 use crate::game::{ActionOutcome, GameState, PlayerAction};
 use crate::player::Player;
 
@@ -93,8 +94,18 @@ fn score_game_state(game: &GameState) -> f64 {
 }
 
 fn score_player_cards(player: &Player) -> f64 {
-    // TODO: better scoring
-    player.sum_movement().iter().sum::<u8>() as f64
+    let mut score = 0.0;
+    for (card, count) in player.all_cards() {
+        score += score_card(card) * (count as f64);
+    }
+    score
+}
+
+fn score_card(card: &Card) -> f64 {
+    let movement_sum: u8 = card.movement.iter().sum();
+    // TODO: factor in actions, etc.
+    // TODO: weight move types differently based on upcoming terrain
+    movement_sum as f64
 }
 
 #[cfg(test)]

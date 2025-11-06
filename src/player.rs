@@ -121,21 +121,46 @@ impl Player {
         self.deck.len()
     }
 
-    /// Total movement points across all cards.
-    pub fn sum_movement(&self) -> [u8; 3] {
-        let mut sums = [0u8; 3];
-        for card in self
-            .hand
+    fn cards_iter(&self) -> impl Iterator<Item = &Card> {
+        self.hand
             .iter()
             .chain(self.played.iter())
             .chain(self.deck.iter())
             .chain(self.discard.iter())
-        {
+    }
+
+    /// Total movement points across all cards.
+    pub fn sum_movement(&self) -> [u8; 3] {
+        let mut sums = [0u8; 3];
+        for card in self.cards_iter() {
             for (i, &mv) in card.movement.iter().enumerate() {
                 sums[i] += mv;
             }
         }
         sums
+    }
+
+    // All unique cards belonging to the player, along with their counts.
+    pub fn all_cards(&self) -> Vec<(&Card, usize)> {
+        let mut cards = self.cards_iter().collect::<Vec<_>>();
+        cards.sort_unstable();
+        if cards.len() < 2 {
+            return cards.into_iter().map(|c| (c, 1)).collect();
+        }
+        let mut prev_card = cards[0];
+        let mut count = 1;
+        let mut result = Vec::new();
+        for &card in &cards[1..] {
+            if card == prev_card {
+                count += 1;
+            } else {
+                result.push((prev_card, count));
+                prev_card = card;
+                count = 1;
+            }
+        }
+        result.push((prev_card, count));
+        result
     }
 
     pub fn debug_str(&self, idx: usize) -> String {
