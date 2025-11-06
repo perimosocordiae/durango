@@ -186,7 +186,7 @@ fn main() {
         "{} out of {} games were successful",
         round_stats.count, args.repeats
     );
-    time_stats.report("Time   ");
+    time_stats.report("Time ms");
     if round_stats.count > 0 {
         round_stats.report("Rounds ");
         action_stats.report("Actions");
