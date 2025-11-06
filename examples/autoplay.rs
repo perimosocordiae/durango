@@ -17,6 +17,8 @@ struct Args {
     quiet: bool,
     #[clap(long, default_value_t = 1)]
     repeats: usize,
+    #[clap(long, value_parser, value_delimiter = ',', default_value = "0,1")]
+    ai_levels: Vec<usize>,
 }
 
 fn interactive_action(g: &game::GameState) -> game::PlayerAction {
@@ -63,7 +65,7 @@ fn run_game(args: &Args) -> Option<RunInfo> {
         }
     };
     let ais = (0..args.players)
-        .map(|i| agent::create_agent(i))
+        .map(|i| agent::create_agent(args.ai_levels[i % args.ai_levels.len()]))
         .collect::<Vec<_>>();
     for a in 0..args.actions {
         if !args.quiet {
@@ -163,6 +165,7 @@ impl Stats {
 fn main() {
     let mut args = Args::parse();
     let all_presets = args.preset == "all";
+    let mut time_stats = Stats::new();
     let mut round_stats = Stats::new();
     let mut action_stats = Stats::new();
     let mut win_counts = vec![0; args.players];
@@ -170,16 +173,20 @@ fn main() {
         if all_presets {
             args.preset = ALL_PRESETS[i % ALL_PRESETS.len()].to_string();
         }
+        let start_time = std::time::Instant::now();
         if let Some(info) = run_game(&args) {
             round_stats.add(info.rounds);
             action_stats.add(info.actions);
             win_counts[info.winner] += 1;
         }
+        let elapsed = start_time.elapsed();
+        time_stats.add(elapsed.as_millis() as usize);
     }
     println!(
         "{} out of {} games were successful",
         round_stats.count, args.repeats
     );
+    time_stats.report("Time   ");
     if round_stats.count > 0 {
         round_stats.report("Rounds ");
         action_stats.report("Actions");
