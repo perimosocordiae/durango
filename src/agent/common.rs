@@ -20,12 +20,15 @@ pub(super) fn can_safely_trash(me: &Player) -> bool {
 pub(super) fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     let me = game.curr_player();
     let my_idx = game.map.node_idx(me.position).unwrap();
+    // Get unique cards in hand to avoid duplicate move generation.
+    let mut uniq_hand: Vec<(&Card, usize)> =
+        me.hand.iter().enumerate().map(|(i, c)| (c, i)).collect();
+    uniq_hand.sort_unstable();
+    uniq_hand.dedup_by(|a, b| a.0 == b.0);
     // Start with regular card moves.
-    let mut valid_moves: Vec<MoveAction> = me
-        .hand
-        .iter()
-        .enumerate()
-        .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx))
+    let mut valid_moves: Vec<MoveAction> = uniq_hand
+        .into_iter()
+        .flat_map(|(c, i)| all_moves_for_card(c, i, game, my_idx))
         .map(|cand| cand.action)
         .collect();
     // Also consider any token-only moves.

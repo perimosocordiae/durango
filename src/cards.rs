@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub enum CardAction {
     FreeBuy,
     FreeMove,
@@ -55,7 +57,7 @@ impl BuyableCard {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Card {
     // [Jungle, Desert, Water]
     pub movement: [u8; 3],
