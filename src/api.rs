@@ -297,7 +297,7 @@ impl DynSafeGameAPI for DurangoAPI {
 fn exercise_api() {
     let players = vec![
         PlayerInfo::human("foo".into()),
-        PlayerInfo::ai("bot".into(), 1),
+        PlayerInfo::ai("bot".into(), 0),
     ];
     let mut game: DurangoAPI =
         GameAPI::init(&players, Some(r#"{"named_layout": "first"}"#)).unwrap();
@@ -328,8 +328,8 @@ fn exercise_api() {
 #[test]
 fn self_play() {
     let players = vec![
-        PlayerInfo::ai("bot1".into(), 1),
-        PlayerInfo::ai("bot2".into(), 1),
+        PlayerInfo::ai("bot1".into(), 0),
+        PlayerInfo::ai("bot2".into(), 0),
     ];
     let mut game: DurangoAPI =
         GameAPI::init(&players, Some(r#"{"named_layout": "easy1"}"#)).unwrap();
