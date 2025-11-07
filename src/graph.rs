@@ -1,5 +1,5 @@
 use crate::data::{ALL_DIRECTIONS, AxialCoord, HexDirection, HexMap, Node};
-use std::collections::VecDeque;
+use std::collections::{BinaryHeap, VecDeque};
 
 #[derive(Default, Clone)]
 pub struct HexGraph {
@@ -45,6 +45,14 @@ impl HexGraph {
                 }
             })
     }
+    /// Get customized distances to the finish.
+    pub fn distances_to_finish(
+        &self,
+        map: &HexMap,
+        cost_fn: impl Fn(&Node) -> f64,
+    ) -> Vec<f64> {
+        custom_distances(&map.nodes, &self.adj, map.finish_idx, cost_fn)
+    }
 }
 
 fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
@@ -67,14 +75,14 @@ fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
 fn create_hex_distances(
     nodes: &[(AxialCoord, Node)],
     adj: &[[usize; 6]],
-    finish_idx: u8,
+    finish_board_idx: u8,
 ) -> Vec<i32> {
     // Run BFS from the finish nodes.
     let mut queue = nodes
         .iter()
         .enumerate()
         .filter_map(|(i, (_, node))| {
-            if node.board_idx == finish_idx {
+            if node.board_idx == finish_board_idx {
                 Some((i, 0))
             } else {
                 None
@@ -94,6 +102,63 @@ fn create_hex_distances(
             {
                 dists[nbr_idx] = next_dist;
                 queue.push_back((nbr_idx, next_dist));
+            }
+        }
+    }
+    dists
+}
+
+fn custom_distances(
+    nodes: &[(AxialCoord, Node)],
+    adj: &[[usize; 6]],
+    finish_board_idx: u8,
+    cost_fn: impl Fn(&Node) -> f64,
+) -> Vec<f64> {
+    // Min-heap element.
+    #[derive(PartialEq)]
+    struct MinElem {
+        cost: f64,
+        idx: usize,
+    }
+    impl Eq for MinElem {}
+    impl PartialOrd for MinElem {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            other.cost.partial_cmp(&self.cost)
+        }
+    }
+    impl Ord for MinElem {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            other
+                .cost
+                .partial_cmp(&self.cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }
+    }
+    // Dijkstra's algorithm.
+    let mut queue = BinaryHeap::<MinElem>::new();
+    let mut dists = vec![f64::INFINITY; nodes.len()];
+    // Search backwards from the finish nodes.
+    for (i, (_, node)) in nodes.iter().enumerate() {
+        if node.board_idx == finish_board_idx {
+            queue.push(MinElem { cost: 0.0, idx: i });
+            dists[i] = 0.0;
+        }
+    }
+    while let Some(MinElem { cost, idx }) = queue.pop() {
+        if cost > dists[idx] {
+            continue;
+        }
+        let next_cost = cost + cost_fn(&nodes[idx].1);
+        for &nbr_idx in &adj[idx] {
+            if let Some(d) = dists.get(nbr_idx)
+                && next_cost < *d
+                && nodes[nbr_idx].1.cost < 10
+            {
+                dists[nbr_idx] = next_cost;
+                queue.push(MinElem {
+                    cost: next_cost,
+                    idx: nbr_idx,
+                });
             }
         }
     }
