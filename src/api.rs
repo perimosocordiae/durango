@@ -79,7 +79,7 @@ pub struct DurangoAPI {
 impl DurangoAPI {
     fn view(&self, player_idx: usize) -> Result<String> {
         let game = &self.state;
-        let winner = if game.is_game_over() {
+        let winner = if self.game_over {
             game.player_scores()
                 .iter()
                 .enumerate()

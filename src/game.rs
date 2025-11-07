@@ -273,11 +273,6 @@ impl GameState {
         self.players.iter().any(|p| self.map.is_finish(p.position))
     }
 
-    /// Is the game over?
-    pub fn is_game_over(&self) -> bool {
-        self.curr_player_idx == 0 && self.any_finished_player()
-    }
-
     /// Score each player, for determining who won.
     pub fn player_scores(&self) -> Vec<i32> {
         self.players
@@ -319,9 +314,9 @@ impl GameState {
                 self.players[self.curr_player_idx]
                     .finish_turn(&mut rand::rng());
                 self.curr_player_idx += 1;
-                self.curr_player_idx %= self.players.len();
-                if self.curr_player_idx == 0 {
+                if self.curr_player_idx == self.players.len() {
                     self.round_idx += 1;
+                    self.curr_player_idx = 0;
                     if self.any_finished_player() {
                         return Ok(ActionOutcome::GameOver);
                     }
