@@ -593,9 +593,13 @@ impl GameState {
                     mv.cards.len()
                 ));
             }
-            if !mv.tokens.is_empty() {
+            // Check that no invalid tokens are being used.
+            if mv.tokens.len() > 1
+                || (mv.tokens.len() == 1
+                    && !matches!(tokens[mv.tokens[0]], BonusToken::ShareHex))
+            {
                 return Err(
-                    "Cannot use tokens when discarding/trashing cards".into()
+                    "Only the ShareHex token can be used when discarding/trashing cards".into()
                 );
             }
         } else {
