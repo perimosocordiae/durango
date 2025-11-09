@@ -6,6 +6,7 @@ use crate::{
     cards::{BuyableCard, Card},
     data::{AxialCoord, Barrier, BonusToken, HexMap},
     game::{ActionOutcome, GameState, PlayerAction},
+    graph::HexGraph,
 };
 
 /// Parameters for game initialization.
@@ -218,7 +219,8 @@ impl GameAPI for DurangoAPI {
     }
 
     fn restore(player_info: &[PlayerInfo], final_state: &str) -> Result<Self> {
-        let fs: FinalState = serde_json::from_str(final_state)?;
+        let mut fs: FinalState = serde_json::from_str(final_state)?;
+        fs.game.graph = HexGraph::new(&fs.game.map);
         Ok(Self {
             state: fs.game,
             player_ids: player_info.iter().map(|p| p.id.clone()).collect(),
