@@ -158,7 +158,7 @@ impl GameState {
             .into_iter()
             .take(num_players)
             .map(|start_idx| {
-                let start_pos = map.nodes[start_idx].0;
+                let start_pos = map.coord_at_idx(start_idx).unwrap();
                 Player::new(start_pos, rng)
             })
             .collect();
@@ -166,8 +166,7 @@ impl GameState {
         let mut all_tokens = data::ALL_BONUS_TOKENS.to_vec();
         all_tokens.shuffle(rng);
         let bonuses = map
-            .nodes
-            .iter()
+            .all_nodes()
             .filter_map(|(pos, node)| {
                 if node.terrain == Terrain::Cave && all_tokens.len() >= 4 {
                     Some((*pos, all_tokens.split_off(all_tokens.len() - 4)))
@@ -852,28 +851,12 @@ impl GameState {
         Ok(())
     }
 
-    /// Get the neighboring nodes of a given node index.
-    pub fn neighbors_of_idx(
-        &self,
-        idx: usize,
-    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
-        self.graph.neighbor_indices(idx).map(|(nbr_idx, dir)| {
-            let (pos, node) = &self.map.nodes[nbr_idx];
-            (dir, *pos, node)
-        })
-    }
-
     /// Get the neighboring nodes of a given coordinate.
     pub fn neighbors_of(
         &self,
         coord: AxialCoord,
     ) -> impl Iterator<Item = (HexDirection, AxialCoord, &Node)> {
-        self.neighbors_of_idx(
-            self.map
-                .nodes
-                .binary_search_by_key(&coord, |(c, _)| *c)
-                .unwrap_or(usize::MAX),
-        )
+        self.graph.neighbors_of(&self.map, coord)
     }
 
     /// Get the barrier index (if any) between two boards.

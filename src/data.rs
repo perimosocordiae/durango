@@ -291,7 +291,7 @@ fn load_layout(
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HexMap {
     // Mapping from axial coordinates to nodes, in sorted order.
-    pub nodes: Vec<(AxialCoord, Node)>,
+    nodes: Vec<(AxialCoord, Node)>,
     // Index of the "finish" board.
     pub(crate) finish_idx: u8,
 }
@@ -362,6 +362,10 @@ impl HexMap {
     /// Get the node at a given index.
     pub fn node_at_idx(&self, idx: usize) -> Option<&Node> {
         self.nodes.get(idx).map(|(_, node)| node)
+    }
+    /// Get the coordinate at a given index.
+    pub fn coord_at_idx(&self, idx: usize) -> Option<AxialCoord> {
+        self.nodes.get(idx).map(|(coord, _)| *coord)
     }
     /// Checks if the given coordinate has a node of the given terrain.
     pub fn with_terrain(

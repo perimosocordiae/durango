@@ -15,7 +15,7 @@ impl Agent for GreedyAgent {
         let my_idx = game.map.node_idx(me.position).unwrap();
 
         // Check if we can enter a cave.
-        for (dir, pos, node) in game.neighbors_of_idx(my_idx) {
+        for (dir, pos, node) in game.graph.neighbors_of_idx(&game.map, my_idx) {
             if node.terrain == Terrain::Cave && game.can_visit_cave(pos) {
                 return PlayerAction::Move(MoveAction::cave(dir));
             }
@@ -74,7 +74,8 @@ impl Agent for GreedyAgent {
             .enumerate()
             .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx));
         // Now consider any multi-card moves (single-tile only).
-        let my_board_idx = game.map.nodes[my_idx].1.board_idx as usize;
+        let my_board_idx =
+            game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
         let moves =
             moves.chain(game.graph.neighbor_indices(my_idx).filter_map(
                 |(nbr_idx, dir)| {
@@ -188,7 +189,7 @@ fn best_move_for_node(
     hand: &[Card],
     board_idx: usize,
 ) -> Option<MoveCandidate> {
-    let (pos, node) = game.map.nodes[node_idx];
+    let node = game.map.node_at_idx(node_idx).unwrap();
     // Check if we're breaking a barrier first.
     if let Some(barrier_idx) =
         game.barrier_index(board_idx, node.board_idx as usize)
@@ -217,6 +218,7 @@ fn best_move_for_node(
             num_barriers: 1,
         });
     }
+    let pos = game.map.coord_at_idx(node_idx).unwrap();
     if game.is_occupied(pos) {
         return None;
     }

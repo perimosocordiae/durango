@@ -40,8 +40,7 @@ fn dump_dot(map: &HexMap, graph: &HexGraph) {
             node.cost,
             node.color()
         );
-        for (idx, _) in graph.neighbor_indices(i) {
-            let (next_pos, neighbor) = map.nodes[idx];
+        for (_, next_pos, neighbor) in graph.neighbors_of_idx(map, i) {
             if !matches!(neighbor.terrain, Terrain::Invalid) {
                 println!(
                     "  {} -> {}",

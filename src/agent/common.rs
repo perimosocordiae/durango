@@ -40,7 +40,7 @@ pub(super) fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
             .map(|cand| cand.action),
     );
     // Next, consider single-step moves (cave, swamp, village).
-    let from_board = game.map.nodes[my_idx].1.board_idx as usize;
+    let from_board = game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
     for (dir, pos, node) in game.neighbors_of(me.position) {
         if let Some(barrier_idx) =
             game.barrier_index(from_board, node.board_idx as usize)
@@ -261,14 +261,16 @@ fn all_free_moves(
     move_idx: MoveIndex,
     my_idx: usize,
 ) -> impl Iterator<Item = MoveCandidate> {
-    let curr_board_idx = game.map.nodes[my_idx].1.board_idx as usize;
+    let curr_board_idx =
+        game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
     game.graph
         .neighbor_indices(my_idx)
         .filter_map(move |(nbr_idx, dir)| {
-            let (pos, node) = game.map.nodes.get(nbr_idx)?;
-            if game.is_occupied(*pos) {
+            let pos = game.map.coord_at_idx(nbr_idx)?;
+            if game.is_occupied(pos) {
                 return None;
             }
+            let node = game.map.node_at_idx(nbr_idx)?;
             // Free moves cannot be used to break barriers.
             if game
                 .barrier_index(curr_board_idx, node.board_idx as usize)
@@ -329,9 +331,10 @@ fn all_moves_helper(
         if elem.path.len() >= max_move as usize {
             continue;
         }
-        let board_idx = game.map.nodes[elem.idx].1.board_idx as usize;
+        let board_idx =
+            game.map.node_at_idx(elem.idx).unwrap().board_idx as usize;
         for (nbr_idx, dir) in game.graph.neighbor_indices(elem.idx) {
-            let (pos, node) = game.map.nodes[nbr_idx];
+            let node = game.map.node_at_idx(nbr_idx).unwrap();
             let nbr_board_idx = node.board_idx as usize;
             // Check if we're crossing a barrier for the first time.
             if let Some(barrier_idx) =
@@ -374,6 +377,7 @@ fn all_moves_helper(
                     barriers: new_barriers,
                 });
             } else {
+                let pos = game.map.coord_at_idx(nbr_idx).unwrap();
                 if node.cost > max_move
                     || game.is_occupied(pos)
                     || seen.iter().any(|s| s.node_idx == nbr_idx)

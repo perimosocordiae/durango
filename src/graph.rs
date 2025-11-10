@@ -13,8 +13,8 @@ pub struct HexGraph {
 
 impl HexGraph {
     pub fn new(map: &HexMap) -> Self {
-        let adj = create_adjacencies(&map.nodes);
-        let dists = create_hex_distances(&map.nodes, &adj, map.finish_idx);
+        let adj = create_adjacencies(map);
+        let dists = create_hex_distances(map, &adj, map.finish_idx);
         let max_dist = dists
             .iter()
             .filter(|&&d| d < i32::MAX)
@@ -45,26 +45,46 @@ impl HexGraph {
                 }
             })
     }
+    /// Get the neighboring nodes of a given node index.
+    pub fn neighbors_of_idx<'a>(
+        &self,
+        map: &'a HexMap,
+        idx: usize,
+    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &'a Node)> {
+        self.neighbor_indices(idx).map(|(nbr_idx, dir)| {
+            (
+                dir,
+                map.coord_at_idx(nbr_idx).unwrap(),
+                map.node_at_idx(nbr_idx).unwrap(),
+            )
+        })
+    }
+    /// Get the neighboring nodes of a given coordinate.
+    pub fn neighbors_of<'a>(
+        &self,
+        map: &'a HexMap,
+        coord: AxialCoord,
+    ) -> impl Iterator<Item = (HexDirection, AxialCoord, &'a Node)> {
+        let idx = map.node_idx(coord).unwrap_or(usize::MAX);
+        self.neighbors_of_idx(map, idx)
+    }
     /// Get customized distances to the finish.
     pub fn distances_to_finish(
         &self,
         map: &HexMap,
         cost_fn: impl Fn(&Node) -> f64,
     ) -> Vec<f64> {
-        custom_distances(&map.nodes, &self.adj, map.finish_idx, cost_fn)
+        custom_distances(map, &self.adj, map.finish_idx, cost_fn)
     }
 }
 
-fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
-    nodes
-        .iter()
+fn create_adjacencies(map: &HexMap) -> Vec<[usize; 6]> {
+    map.all_nodes()
         .map(|(pos, _)| {
             let mut neighbors = [0; 6];
             for (i, dir) in ALL_DIRECTIONS.iter().enumerate() {
                 let nbr_pos = dir.neighbor_coord(*pos);
-                neighbors[i] = nodes
-                    .binary_search_by_key(&nbr_pos, |(c, _)| *c)
-                    .unwrap_or(usize::MAX);
+                neighbors[i] = map.node_idx(nbr_pos).unwrap_or(usize::MAX);
             }
             neighbors
         })
@@ -73,13 +93,13 @@ fn create_adjacencies(nodes: &[(AxialCoord, Node)]) -> Vec<[usize; 6]> {
 
 /// Returns a distance (in terms of # hexes, not move cost) for every node.
 fn create_hex_distances(
-    nodes: &[(AxialCoord, Node)],
+    map: &HexMap,
     adj: &[[usize; 6]],
     finish_board_idx: u8,
 ) -> Vec<i32> {
     // Run BFS from the finish nodes.
-    let mut queue = nodes
-        .iter()
+    let mut queue = map
+        .all_nodes()
         .enumerate()
         .filter_map(|(i, (_, node))| {
             if node.board_idx == finish_board_idx {
@@ -89,7 +109,7 @@ fn create_hex_distances(
             }
         })
         .collect::<VecDeque<(usize, i32)>>();
-    let mut dists = vec![i32::MAX; nodes.len()];
+    let mut dists = vec![i32::MAX; adj.len()];
     for &(i, _) in &queue {
         dists[i] = 0;
     }
@@ -98,7 +118,7 @@ fn create_hex_distances(
         for &nbr_idx in &adj[idx] {
             if let Some(d) = dists.get(nbr_idx)
                 && *d > next_dist
-                && nodes[nbr_idx].1.cost < 10
+                && map.node_at_idx(nbr_idx).unwrap().cost < 10
             {
                 dists[nbr_idx] = next_dist;
                 queue.push_back((nbr_idx, next_dist));
@@ -109,7 +129,7 @@ fn create_hex_distances(
 }
 
 fn custom_distances(
-    nodes: &[(AxialCoord, Node)],
+    map: &HexMap,
     adj: &[[usize; 6]],
     finish_board_idx: u8,
     cost_fn: impl Fn(&Node) -> f64,
@@ -123,7 +143,7 @@ fn custom_distances(
     impl Eq for MinElem {}
     impl PartialOrd for MinElem {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            other.cost.partial_cmp(&self.cost)
+            Some(self.cmp(other))
         }
     }
     impl Ord for MinElem {
@@ -136,9 +156,9 @@ fn custom_distances(
     }
     // Dijkstra's algorithm.
     let mut queue = BinaryHeap::<MinElem>::new();
-    let mut dists = vec![f64::INFINITY; nodes.len()];
+    let mut dists = vec![f64::INFINITY; adj.len()];
     // Search backwards from the finish nodes.
-    for (i, (_, node)) in nodes.iter().enumerate() {
+    for (i, (_, node)) in map.all_nodes().enumerate() {
         if node.board_idx == finish_board_idx {
             queue.push(MinElem { cost: 0.0, idx: i });
             dists[i] = 0.0;
@@ -148,11 +168,12 @@ fn custom_distances(
         if cost > dists[idx] {
             continue;
         }
-        let next_cost = cost + cost_fn(&nodes[idx].1);
+        let node = map.node_at_idx(idx).unwrap();
+        let next_cost = cost + cost_fn(node);
         for &nbr_idx in &adj[idx] {
             if let Some(d) = dists.get(nbr_idx)
                 && next_cost < *d
-                && nodes[nbr_idx].1.cost < 10
+                && map.node_at_idx(nbr_idx).unwrap().cost < 10
             {
                 dists[nbr_idx] = next_cost;
                 queue.push(MinElem {
