@@ -96,10 +96,9 @@ pub enum ActionOutcome {
     GameOver,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct GameState {
     pub map: HexMap,
-    #[serde(skip)]
     pub graph: HexGraph,
     pub barriers: Vec<Barrier>,
     pub players: Vec<Player>,
@@ -224,6 +223,25 @@ impl GameState {
             curr_player_idx: 0,
             round_idx: 0,
         })
+    }
+
+    /// Assemble a minimum game state from its parts.
+    pub(crate) fn from_parts(
+        map: HexMap,
+        players: Vec<Player>,
+        round_idx: usize,
+    ) -> Self {
+        Self {
+            graph: HexGraph::new(&map),
+            map,
+            barriers: vec![],
+            players,
+            shop: vec![],
+            storage: vec![],
+            bonuses: vec![],
+            curr_player_idx: 0,
+            round_idx,
+        }
     }
 
     /// The player whose turn it is.
@@ -729,7 +747,11 @@ impl GameState {
         }
         // Remove broken barriers from the game.
         if let Some(idx) = broken_barrier {
-            player.broken_barriers.push(self.barriers.swap_remove(idx));
+            let barrier = self.barriers.swap_remove(idx);
+            player.broken_barriers.push(data::BrokenBarrier {
+                terrain: barrier.terrain,
+                cost: barrier.cost,
+            });
         }
         Ok(ignore_idx)
     }

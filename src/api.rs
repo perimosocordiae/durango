@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     agent::{Agent, create_agent},
     cards::{BuyableCard, Card},
-    data::{AxialCoord, Barrier, BonusToken, HexMap},
+    data::{AxialCoord, Barrier, BonusToken, BrokenBarrier, HexMap},
     game::{ActionOutcome, GameState, PlayerAction},
-    graph::HexGraph,
+    player::Player,
 };
 
 /// Parameters for game initialization.
@@ -18,27 +18,26 @@ struct GameParams {
 
 /// A view of another player's public information.
 #[derive(Serialize)]
-pub struct OtherPlayer<'a> {
+pub struct PublicPlayerInfo<'a> {
     player_idx: usize,
     position: AxialCoord,
     hand: &'a [Card],
+    played: &'a [Card],
+    deck_size: usize,
+    discard_size: usize,
     tokens: &'a [BonusToken],
+    broken_barriers: &'a [BrokenBarrier],
 }
 
 /// A view of my player's visible information.
 #[derive(Serialize)]
 pub struct MyPlayer<'a> {
-    // Public info (matches OtherPlayer).
-    player_idx: usize,
-    position: AxialCoord,
-    hand: &'a [Card],
-    tokens: &'a [BonusToken],
+    // Public info.
+    #[serde(flatten)]
+    info: PublicPlayerInfo<'a>,
     // Private info for my eyes only.
-    played: &'a [Card],
-    deck_size: usize,
-    discard_size: usize,
     trashes: usize,
-    broken_barriers: &'a [Barrier],
+    can_buy: bool,
 }
 
 /// A view of the game state for a specific player.
@@ -47,7 +46,7 @@ pub struct PlayerView<'a> {
     map: &'a HexMap,
     barriers: &'a [Barrier],
     my_player: MyPlayer<'a>,
-    other_players: Vec<OtherPlayer<'a>>,
+    other_players: Vec<PublicPlayerInfo<'a>>,
     bonuses: Vec<(&'a AxialCoord, usize)>,
     shop: &'a [BuyableCard],
     storage: &'a [BuyableCard],
@@ -56,12 +55,24 @@ pub struct PlayerView<'a> {
     winner: Option<usize>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct FinalPlayerInfo {
+    position: AxialCoord,
+    card_counts: Vec<BuyableCard>,
+    tokens: Vec<BonusToken>,
+    broken_barriers: Vec<BrokenBarrier>,
+}
+
 /// Final data to store for viewing completed games.
 #[derive(Serialize, Deserialize)]
 struct FinalState {
-    game: GameState,
+    map: HexMap,
+    players: Vec<FinalPlayerInfo>,
     scores: Vec<i32>,
-    history: Vec<Vec<Vec<AxialCoord>>>,
+    round_idx: usize,
+    named_layout: String,
+    // For each player: sequence of (round_idx, q, r)
+    history: Vec<Vec<(usize, i32, i32)>>,
 }
 
 pub struct DurangoAPI {
@@ -71,10 +82,12 @@ pub struct DurangoAPI {
     player_ids: Vec<String>,
     // None if human player
     agents: Vec<Option<Box<dyn Agent + Send>>>,
-    // Player i, turn j, position k
-    history: Vec<Vec<Vec<AxialCoord>>>,
+    // For each player: sequence of (round_idx, q, r)
+    history: Vec<Vec<(usize, i32, i32)>>,
     // Indicates if the game is over
     game_over: bool,
+    // Named layout used to define the map
+    named_layout: String,
 }
 
 impl DurangoAPI {
@@ -89,35 +102,27 @@ impl DurangoAPI {
         } else {
             None
         };
-        let player = &game.players[player_idx];
-        let my_player = MyPlayer {
-            player_idx,
-            position: player.position,
-            hand: &player.hand,
-            tokens: &player.tokens,
-            played: &player.played,
-            deck_size: player.deck_size(),
-            discard_size: player.discard.len(),
-            trashes: player.trashes,
-            broken_barriers: &player.broken_barriers,
-        };
-        let other_players = game
+        let mut other_players = game
             .players
             .iter()
             .enumerate()
-            .filter_map(|(idx, p)| {
-                if idx != player_idx {
-                    Some(OtherPlayer {
-                        player_idx: idx,
-                        position: p.position,
-                        hand: &p.hand,
-                        tokens: &p.tokens,
-                    })
-                } else {
-                    None
-                }
+            .map(|(idx, p)| PublicPlayerInfo {
+                player_idx: idx,
+                position: p.position,
+                hand: &p.hand,
+                played: &p.played,
+                deck_size: p.deck_size(),
+                discard_size: p.discard.len(),
+                tokens: &p.tokens,
+                broken_barriers: &p.broken_barriers,
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let player = &game.players[player_idx];
+        let my_player = MyPlayer {
+            info: other_players.swap_remove(player_idx),
+            trashes: player.trashes,
+            can_buy: player.can_buy,
+        };
         let view = PlayerView {
             map: &game.map,
             barriers: &game.barriers,
@@ -150,17 +155,17 @@ impl DurangoAPI {
         }
         // If this was a move, update history.
         if let PlayerAction::Move(mv) = action {
-            let my_turns = &mut self.history[self.state.curr_player_idx];
-            let mut prev_pos =
-                *my_turns.iter().rev().find_map(|turn| turn.last()).unwrap();
-            while self.state.round_idx >= my_turns.len() {
-                my_turns.push(vec![]);
-            }
-            let curr_turn = my_turns.get_mut(self.state.round_idx).unwrap();
+            let my_history = &mut self.history[self.state.curr_player_idx];
+            let (_, q, r) = my_history.last().unwrap();
+            let mut prev_pos = AxialCoord { q: *q, r: *r };
             for (i, dir) in mv.path.iter().enumerate() {
                 if ignored_idx != Some(i) {
                     prev_pos = dir.neighbor_coord(prev_pos);
-                    curr_turn.push(prev_pos);
+                    my_history.push((
+                        self.state.round_idx,
+                        prev_pos.q,
+                        prev_pos.r,
+                    ));
                 }
             }
         }
@@ -207,7 +212,7 @@ impl GameAPI for DurangoAPI {
         let history = state
             .player_positions()
             .into_iter()
-            .map(|pos| vec![vec![pos]])
+            .map(|pos| vec![(0, pos.q, pos.r)])
             .collect();
         Ok(Self {
             state,
@@ -215,18 +220,26 @@ impl GameAPI for DurangoAPI {
             agents,
             history,
             game_over: false,
+            named_layout: params.named_layout,
         })
     }
 
     fn restore(player_info: &[PlayerInfo], final_state: &str) -> Result<Self> {
-        let mut fs: FinalState = serde_json::from_str(final_state)?;
-        fs.game.graph = HexGraph::new(&fs.game.map);
+        let fs: FinalState = serde_json::from_str(final_state)?;
+        let players = fs
+            .players
+            .into_iter()
+            .map(|fp| {
+                Player::from_parts(fp.position, fp.tokens, fp.broken_barriers)
+            })
+            .collect();
         Ok(Self {
-            state: fs.game,
+            state: GameState::from_parts(fs.map, players, fs.round_idx),
             player_ids: player_info.iter().map(|p| p.id.clone()).collect(),
             agents: vec![],
             history: fs.history,
             game_over: true,
+            named_layout: fs.named_layout,
         })
     }
 
@@ -269,8 +282,30 @@ impl DynSafeGameAPI for DurangoAPI {
         if !self.game_over {
             return Err("Game is not finished".into());
         }
+        let players = self
+            .state
+            .players
+            .iter()
+            .map(|p| FinalPlayerInfo {
+                position: p.position,
+                card_counts: p
+                    .all_cards()
+                    .iter()
+                    .map(|&(c, num)| BuyableCard {
+                        cost: 0,
+                        card: c.clone(),
+                        quantity: num as u8,
+                    })
+                    .collect(),
+                tokens: p.tokens.clone(),
+                broken_barriers: p.broken_barriers.clone(),
+            })
+            .collect();
         let fs = FinalState {
-            game: self.state.clone(),
+            map: self.state.map.clone(),
+            players,
+            round_idx: self.state.round_idx,
+            named_layout: self.named_layout.clone(),
             scores: self.state.player_scores(),
             history: self.history.clone(),
         };
@@ -342,8 +377,8 @@ fn self_play() {
     let final_positions = game.state.player_positions();
     for (idx, pos) in final_positions.iter().enumerate() {
         let history = &game.history[idx];
-        let last_pos = history.last().unwrap().last().unwrap();
-        assert_eq!(pos, last_pos);
+        let (_, q, r) = *history.last().unwrap();
+        assert_eq!(pos, &AxialCoord { q, r });
     }
     // Check that we can serialize the final state
     let final_state = game.final_state().unwrap();

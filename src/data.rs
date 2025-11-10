@@ -243,6 +243,13 @@ pub struct Barrier {
     pub edges: Vec<(AxialCoord, HexDirection)>,
 }
 
+/// A broken barrier that a player has removed.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BrokenBarrier {
+    pub terrain: Terrain,
+    pub cost: u8,
+}
+
 pub(crate) static ALL_BARRIER_TYPES: [(Terrain, u8); 6] = [
     (Terrain::Jungle, 1),
     (Terrain::Jungle, 2),

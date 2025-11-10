@@ -1,11 +1,10 @@
 use crate::cards::Card;
-use crate::data::{AxialCoord, Barrier, BonusToken};
+use crate::data::{AxialCoord, BonusToken, BrokenBarrier};
 use rand::prelude::SliceRandom;
-use serde::{Deserialize, Serialize};
 
 const HAND_SIZE: usize = 4;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct Player {
     pub position: AxialCoord,
     deck: Vec<Card>,
@@ -16,10 +15,9 @@ pub struct Player {
     pub trashes: usize,
     pub can_buy: bool,
     // Cave positions added when visited, removed when the player moves away.
-    #[serde(skip)]
     pub visited_caves: Vec<AxialCoord>,
     // Barriers broken, used for tie-breaking.
-    pub broken_barriers: Vec<Barrier>,
+    pub broken_barriers: Vec<BrokenBarrier>,
 }
 
 fn rev_sorted(xs: &[usize]) -> Vec<usize> {
@@ -53,6 +51,24 @@ impl Player {
             can_buy: true,
             visited_caves: Vec::new(),
             broken_barriers: Vec::new(),
+        }
+    }
+    pub(crate) fn from_parts(
+        position: AxialCoord,
+        tokens: Vec<BonusToken>,
+        broken_barriers: Vec<BrokenBarrier>,
+    ) -> Self {
+        Self {
+            position,
+            deck: Vec::new(),
+            hand: Vec::new(),
+            played: Vec::new(),
+            discard: Vec::new(),
+            tokens,
+            trashes: 0,
+            can_buy: false,
+            visited_caves: Vec::new(),
+            broken_barriers,
         }
     }
     /// Move specified `cards` from self.hand into self.played.
