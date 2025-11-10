@@ -169,7 +169,7 @@ impl GameState {
             .all_nodes()
             .filter_map(|(pos, node)| {
                 if node.terrain == Terrain::Cave && all_tokens.len() >= 4 {
-                    Some((*pos, all_tokens.split_off(all_tokens.len() - 4)))
+                    Some((pos, all_tokens.split_off(all_tokens.len() - 4)))
                 } else {
                     None
                 }
@@ -900,7 +900,7 @@ fn edges_between_boards(
             if let Some(nbr_node) = map.node_at_idx(nbr_idx)
                 && nbr_node.board_idx as usize == to_board
             {
-                edges.push((*coord, dir));
+                edges.push((coord, dir));
             }
         }
     }

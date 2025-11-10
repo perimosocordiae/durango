@@ -25,6 +25,18 @@ fn coord_to_string(coord: &AxialCoord) -> String {
     format!("q{}r{}", coord.q + 1000, coord.r + 1000)
 }
 
+fn node_color(node: &Node) -> &'static str {
+    match node.terrain {
+        Terrain::Jungle => "green",
+        Terrain::Desert => "yellow",
+        Terrain::Water => "blue",
+        Terrain::Village => "red",
+        Terrain::Swamp => "gray",
+        Terrain::Cave => "brown",
+        Terrain::Invalid => "black",
+    }
+}
+
 fn dump_dot(map: &HexMap, graph: &HexGraph) {
     println!("digraph {{");
     println!("  overlap=false;");
@@ -35,16 +47,16 @@ fn dump_dot(map: &HexMap, graph: &HexGraph) {
         }
         println!(
             "  {} [label=\"{:?}: {}\",fillcolor={}]",
-            coord_to_string(coord),
+            coord_to_string(&coord),
             coord,
             node.cost,
-            node.color()
+            node_color(&node)
         );
         for (_, next_pos, neighbor) in graph.neighbors_of_idx(map, i) {
             if !matches!(neighbor.terrain, Terrain::Invalid) {
                 println!(
                     "  {} -> {}",
-                    coord_to_string(coord),
+                    coord_to_string(&coord),
                     coord_to_string(&next_pos)
                 );
             }
@@ -79,7 +91,7 @@ fn dump_svg(map: &HexMap, graph: &HexGraph, size: f32) {
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
     for (i, (coord, node)) in map.all_nodes().enumerate() {
-        let (cx, cy) = axial_to_center(coord, size);
+        let (cx, cy) = axial_to_center(&coord, size);
         if cx < min_center.0 {
             min_center.0 = cx;
         }
@@ -104,8 +116,8 @@ fn dump_svg(map: &HexMap, graph: &HexGraph, size: f32) {
 <polygon points=\"{}\" fill=\"{}\" stroke=\"black\" stroke-width=\"2\" />
 <text x=\"{cx}\" y=\"{cy}\" font-size=\"{}\" dominant-baseline=\"middle\" text-anchor=\"middle\">{label}</text>
 </g>",
-            axial_to_polygon(coord, size),
-            node.color(),
+            axial_to_polygon(&coord, size),
+            node_color(&node),
             size / 2.0,
         ));
     }

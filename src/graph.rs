@@ -83,7 +83,7 @@ fn create_adjacencies(map: &HexMap) -> Vec<[usize; 6]> {
         .map(|(pos, _)| {
             let mut neighbors = [0; 6];
             for (i, dir) in ALL_DIRECTIONS.iter().enumerate() {
-                let nbr_pos = dir.neighbor_coord(*pos);
+                let nbr_pos = dir.neighbor_coord(pos);
                 neighbors[i] = map.node_idx(nbr_pos).unwrap_or(usize::MAX);
             }
             neighbors

@@ -170,19 +170,6 @@ pub struct Node {
     pub cost: u8,
     pub board_idx: u8,
 }
-impl Node {
-    pub fn color(&self) -> &'static str {
-        match self.terrain {
-            Terrain::Jungle => "green",
-            Terrain::Desert => "yellow",
-            Terrain::Water => "blue",
-            Terrain::Village => "red",
-            Terrain::Swamp => "gray",
-            Terrain::Cave => "brown",
-            Terrain::Invalid => "black",
-        }
-    }
-}
 
 /// A barrier between two boards.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -290,8 +277,10 @@ fn load_layout(
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HexMap {
-    // Mapping from axial coordinates to nodes, in sorted order.
-    nodes: Vec<(AxialCoord, Node)>,
+    // nodes[i] is at coordinate (q[i], r[i]), in sorted order by coordinate.
+    qs: Vec<i32>,
+    rs: Vec<i32>,
+    nodes: Vec<Node>,
     // Index of the "finish" board.
     pub(crate) finish_idx: u8,
 }
@@ -338,7 +327,12 @@ impl HexMap {
             }
         }
         let finish_idx = (layout.len() - 1) as u8;
-        Ok(HexMap { nodes, finish_idx })
+        Ok(HexMap {
+            qs: nodes.iter().map(|(coord, _)| coord.q).collect(),
+            rs: nodes.iter().map(|(coord, _)| coord.r).collect(),
+            nodes: nodes.into_iter().map(|(_, node)| node).collect(),
+            finish_idx,
+        })
     }
     /// Create a map from a named layout.
     pub fn create_named(
@@ -353,19 +347,28 @@ impl HexMap {
     }
     /// Get the node index of a given coordinate.
     pub fn node_idx(&self, coord: AxialCoord) -> Option<usize> {
-        self.nodes.binary_search_by_key(&coord, |(c, _)| *c).ok()
+        let start_idx = self.qs.partition_point(|&q| q < coord.q);
+        let end_idx =
+            self.qs[start_idx..].partition_point(|&q| q == coord.q) + start_idx;
+        // TODO: maybe just linear search here.
+        self.rs[start_idx..end_idx]
+            .binary_search(&coord.r)
+            .ok()
+            .map(|i| i + start_idx)
     }
     /// Get the node at a given coordinate.
     pub fn node_at(&self, coord: AxialCoord) -> Option<&Node> {
-        self.node_idx(coord).map(|idx| &self.nodes[idx].1)
+        self.node_idx(coord).map(|idx| &self.nodes[idx])
     }
     /// Get the node at a given index.
     pub fn node_at_idx(&self, idx: usize) -> Option<&Node> {
-        self.nodes.get(idx).map(|(_, node)| node)
+        self.nodes.get(idx)
     }
     /// Get the coordinate at a given index.
     pub fn coord_at_idx(&self, idx: usize) -> Option<AxialCoord> {
-        self.nodes.get(idx).map(|(coord, _)| *coord)
+        self.qs
+            .get(idx)
+            .and_then(|&q| self.rs.get(idx).map(|&r| AxialCoord { q, r }))
     }
     /// Checks if the given coordinate has a node of the given terrain.
     pub fn with_terrain(
@@ -376,8 +379,12 @@ impl HexMap {
         self.node_at(coord).filter(|n| n.terrain == terrain)
     }
     /// Returns an iterator over all nodes in the map.
-    pub fn all_nodes(&self) -> impl Iterator<Item = &(AxialCoord, Node)> {
-        self.nodes.iter()
+    pub fn all_nodes(&self) -> impl Iterator<Item = (AxialCoord, &Node)> {
+        self.qs
+            .iter()
+            .zip(self.rs.iter())
+            .zip(self.nodes.iter())
+            .map(|((&q, &r), node)| (AxialCoord { q, r }, node))
     }
 }
 
