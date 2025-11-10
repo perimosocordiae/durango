@@ -345,4 +345,12 @@ fn self_play() {
         let last_pos = history.last().unwrap().last().unwrap();
         assert_eq!(pos, last_pos);
     }
+    // Check that we can serialize the final state
+    let final_state = game.final_state().unwrap();
+    println!("Final state: {}", final_state);
+    assert!(final_state.starts_with("{"));
+    // Check that we can restore from the final state
+    let restored_game: DurangoAPI =
+        GameAPI::restore(&players, &final_state).unwrap();
+    assert_eq!(restored_game.state.player_positions(), final_positions);
 }

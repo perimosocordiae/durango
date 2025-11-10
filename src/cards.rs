@@ -13,9 +13,8 @@ pub enum CardAction {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BuyableCard {
     pub cost: u8,
-    pub movement: [u8; 3],
-    pub single_use: bool,
-    pub action: Option<CardAction>,
+    #[serde(flatten)]
+    pub card: Card,
     pub quantity: u8,
 }
 
@@ -23,37 +22,39 @@ impl BuyableCard {
     pub fn regular(cost: u8, movement: [u8; 3]) -> Self {
         Self {
             cost,
-            movement,
-            single_use: false,
-            action: None,
+            card: Card {
+                movement,
+                single_use: false,
+                action: None,
+            },
             quantity: 3,
         }
     }
     pub fn single_use(cost: u8, movement: [u8; 3]) -> Self {
         Self {
             cost,
-            movement,
-            single_use: true,
-            action: None,
+            card: Card {
+                movement,
+                single_use: true,
+                action: None,
+            },
             quantity: 3,
         }
     }
     pub fn action(cost: u8, action: CardAction, single_use: bool) -> Self {
         Self {
             cost,
-            movement: [0, 0, 0],
-            single_use,
-            action: Some(action),
+            card: Card {
+                movement: [0, 0, 0],
+                single_use,
+                action: Some(action),
+            },
             quantity: 3,
         }
     }
     /// Convert to a regular Card, after purchase.
     pub fn to_card(&self) -> Card {
-        Card {
-            movement: self.movement,
-            single_use: self.single_use,
-            action: self.action.clone(),
-        }
+        self.card.clone()
     }
 }
 
@@ -61,7 +62,9 @@ impl BuyableCard {
 pub struct Card {
     // [Jungle, Desert, Water]
     pub movement: [u8; 3],
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub single_use: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<CardAction>,
 }
 

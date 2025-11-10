@@ -102,6 +102,31 @@ pub enum Terrain {
     Swamp,   // Discard card(s)
     Cave,    // Get a bonus
 }
+impl Terrain {
+    fn as_u8(&self) -> u8 {
+        match self {
+            Terrain::Invalid => 0,
+            Terrain::Jungle => 1,
+            Terrain::Desert => 2,
+            Terrain::Water => 3,
+            Terrain::Village => 4,
+            Terrain::Swamp => 5,
+            Terrain::Cave => 6,
+        }
+    }
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Terrain::Invalid),
+            1 => Some(Terrain::Jungle),
+            2 => Some(Terrain::Desert),
+            3 => Some(Terrain::Water),
+            4 => Some(Terrain::Village),
+            5 => Some(Terrain::Swamp),
+            6 => Some(Terrain::Cave),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BonusToken {
@@ -164,11 +189,45 @@ pub(crate) static ALL_BONUS_TOKENS: [BonusToken; 36] = [
     BonusToken::SwapSymbol,
 ];
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Node {
     pub terrain: Terrain,
     pub cost: u8,
     pub board_idx: u8,
+}
+impl Serialize for Node {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let terrain = self.terrain.as_u8() as u16;
+        let cost = self.cost as u16;
+        let board_idx = self.board_idx as u16;
+        // Layout: TTTTCCCCBBBBBBBB
+        let x: u16 = (terrain << 12) | (cost << 8) | (board_idx);
+        serializer.serialize_u16(x)
+    }
+}
+impl<'de> Deserialize<'de> for Node {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = u16::deserialize(deserializer)?;
+        let terrain_u8 = ((raw >> 12) & 0x0F) as u8;
+        let cost = ((raw >> 8) & 0x0F) as u8;
+        let board_idx = (raw & 0xFF) as u8;
+        let terrain = Terrain::from_u8(terrain_u8).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "Invalid terrain value: {terrain_u8}"
+            ))
+        })?;
+        Ok(Node {
+            terrain,
+            cost,
+            board_idx,
+        })
+    }
 }
 
 /// A barrier between two boards.
