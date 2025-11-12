@@ -72,9 +72,16 @@ impl HexGraph {
     pub fn distances_to_finish(
         &self,
         map: &HexMap,
+        start_board_idx: u8,
         cost_fn: impl Fn(&Node) -> f64,
     ) -> Vec<f64> {
-        custom_distances(map, &self.adj, map.finish_idx, cost_fn)
+        custom_distances(
+            map,
+            &self.adj,
+            start_board_idx,
+            map.finish_idx,
+            cost_fn,
+        )
     }
 }
 
@@ -131,6 +138,7 @@ fn create_hex_distances(
 fn custom_distances(
     map: &HexMap,
     adj: &[[usize; 6]],
+    start_board_idx: u8,
     finish_board_idx: u8,
     cost_fn: impl Fn(&Node) -> f64,
 ) -> Vec<f64> {
@@ -173,7 +181,9 @@ fn custom_distances(
         for &nbr_idx in &adj[idx] {
             if let Some(d) = dists.get(nbr_idx)
                 && next_cost < *d
-                && map.node_at_idx(nbr_idx).unwrap().cost < 10
+                && let Some(next_node) = map.node_at_idx(nbr_idx)
+                && next_node.cost < 10
+                && next_node.board_idx >= start_board_idx
             {
                 dists[nbr_idx] = next_cost;
                 queue.push(MinElem {

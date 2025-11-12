@@ -86,7 +86,7 @@ fn axial_to_polygon(pos: &AxialCoord, size: f32) -> String {
 
 fn dump_svg(map: &HexMap, graph: &HexGraph, size: f32) {
     let dists = graph
-        .distances_to_finish(map, |node: &Node| (node.cost as f64).powi(2));
+        .distances_to_finish(map, 0, |node: &Node| (node.cost as f64).powi(2));
     let mut min_center = (f32::INFINITY, f32::INFINITY);
     let mut max_center = (f32::NEG_INFINITY, f32::NEG_INFINITY);
     let mut elements = Vec::new();
