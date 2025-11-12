@@ -205,9 +205,14 @@ impl GameAPI for DurangoAPI {
         let state =
             GameState::new(players.len(), &params.named_layout, &mut rng)?;
         let player_ids = players.iter().map(|p| p.id.clone()).collect();
+        // API level to agent difficulty mapping:
+        // 0 => GreedyAgent
+        // 1 => StaticDistanceTurnPlanner(1)
+        // 2 => DynamicCostTurnPlanner
+        const AI_LVL_MAPPING: &[usize] = &[1, 3, 5];
         let agents = players
             .iter()
-            .map(|p| p.level.map(|lvl| create_agent(1 + lvl as usize)))
+            .map(|p| p.level.map(|i| create_agent(AI_LVL_MAPPING[i as usize])))
             .collect();
         let history = state
             .player_positions()
