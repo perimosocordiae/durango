@@ -35,7 +35,7 @@ impl StaticDistanceTurnPlanner {
 }
 impl Agent for StaticDistanceTurnPlanner {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let (best, num_sims) = find_best_action(self, game);
+        let (best, num_sims) = find_best_action(self, game, 0);
         if num_sims >= 10000 {
             println!("Sims = {num_sims}\t Score = {}", best.score);
         }
@@ -67,17 +67,20 @@ fn score_player_cards(player: &Player) -> f64 {
 }
 
 fn score_card(card: &Card) -> f64 {
-    let movement_sum: u8 = card.movement.iter().sum();
-    // TODO: factor in actions, etc.
-    // TODO: weight move types differently based on upcoming terrain
-    movement_sum as f64
+    match card.action {
+        None => card.movement.iter().sum::<u8>() as f64,
+        Some(CardAction::FreeMove) => 5.0,
+        Some(CardAction::Draw(n)) => 2.0 * (n as f64),
+        Some(CardAction::DrawAndTrash(n)) => 3.0 * (n as f64),
+        Some(CardAction::FreeBuy) => 4.0,
+    }
 }
 
 #[derive(Default)]
 pub(super) struct DynamicCostTurnPlanner {}
 impl Agent for DynamicCostTurnPlanner {
     fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let (best, num_sims) = find_best_action(self, game);
+        let (best, num_sims) = find_best_action(self, game, 0);
         if num_sims >= 10000 {
             println!("Sims = {num_sims}\t Score = {}", best.score);
         }
@@ -145,10 +148,20 @@ struct ActionScore {
     action: PlayerAction,
     score: f64,
 }
+const MAX_DEPTH: usize = 5;
 fn find_best_action(
     agent: &impl GameScorer,
     game: &GameState,
+    depth: usize,
 ) -> (ActionScore, usize) {
+    // Hack: to avoid the possibility of an infinite loop of drawing cards,
+    // only consider buy/move/trash actions if no draw actions are possible.
+    // This also means the agent can't cheat by looking ahead in the deck.
+    if let Some(draw) = valid_draw_actions(game).into_iter().next() {
+        let action = PlayerAction::Draw(draw);
+        return (ActionScore { action, score: 0.0 }, 0);
+    }
+
     let num_cards = game.curr_player().hand.len();
     let mut best = ActionScore {
         action: if num_cards == 0 {
@@ -158,6 +171,9 @@ fn find_best_action(
         },
         score: agent.score_game_state(game),
     };
+    if depth >= MAX_DEPTH {
+        return (best, 0);
+    }
 
     let mut num_sims = 0;
     for action in all_actions(game) {
@@ -175,7 +191,7 @@ fn find_best_action(
             );
         }
         // Otherwise, recurse.
-        let (res, ct) = find_best_action(agent, &simulated_game);
+        let (res, ct) = find_best_action(agent, &simulated_game, depth + 1);
         num_sims += ct;
         if res.score > best.score {
             best = ActionScore {
@@ -187,11 +203,9 @@ fn find_best_action(
     (best, num_sims)
 }
 
+// Get all valid actions for the current player, excluding draw-card actions.
 fn all_actions(game: &GameState) -> Vec<PlayerAction> {
     let mut actions = Vec::new();
-    for draw in valid_draw_actions(game) {
-        actions.push(PlayerAction::Draw(draw));
-    }
     for buy in valid_buy_actions(game) {
         actions.push(PlayerAction::BuyCard(buy));
     }
