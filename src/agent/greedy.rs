@@ -67,29 +67,31 @@ impl Agent for GreedyAgent {
         }
 
         // Try to move as close to the finish as possible.
-        // Look at all one-card moves first.
-        let moves = me
-            .hand
-            .iter()
-            .enumerate()
-            .flat_map(|(i, c)| all_moves_for_card(c, i, game, my_idx));
-        // Now consider any multi-card moves (single-tile only).
         let my_board_idx =
             game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
-        let moves =
-            moves.chain(game.graph.neighbor_indices(my_idx).filter_map(
-                |(nbr_idx, dir)| {
-                    best_move_for_node(
-                        nbr_idx,
-                        dir,
-                        game,
-                        &me.hand,
-                        my_board_idx,
-                    )
-                },
-            ));
-        // Also consider any token-only moves.
-        let moves = moves.chain(all_token_only_moves(game, my_idx));
+        // Start with multi-card moves (single-tile only).
+        let moves = game
+            .graph
+            .neighbor_indices(my_idx)
+            .filter_map(|(nbr_idx, dir)| {
+                best_move_for_node(nbr_idx, dir, game, &me.hand, my_board_idx)
+            })
+            // Look at all one-card moves.
+            .chain(
+                (0..me.hand.len())
+                    .filter_map(|i| {
+                        all_moves_for_item(MoveIndex::Card(i), game, my_idx)
+                    })
+                    .flatten(),
+            )
+            // Also consider any token-only moves.
+            .chain(
+                (0..me.tokens.len())
+                    .filter_map(|i| {
+                        all_moves_for_item(MoveIndex::Token(i), game, my_idx)
+                    })
+                    .flatten(),
+            );
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
         let dists = &game.graph.dists;
@@ -215,10 +217,6 @@ fn best_move_for_node(
             num_barriers: 1,
         });
     }
-    let pos = game.map.coord_at_idx(node_idx).unwrap();
-    if game.is_occupied(pos) {
-        return None;
-    }
     let mut card_indices: Vec<usize> = match node.terrain {
         Terrain::Swamp => {
             // Pick card indices to discard, ordered by value.
@@ -251,9 +249,25 @@ fn best_move_for_node(
         return None;
     }
     card_indices.truncate(node.cost.into());
+    let mut action = MoveAction::multi_card(card_indices, dir);
+
+    // Check if the destination is occupied.
+    let pos = game.map.coord_at_idx(node_idx).unwrap();
+    if game.is_occupied(pos) {
+        if let Some(share_idx) = game
+            .curr_player()
+            .tokens
+            .iter()
+            .position(|t| matches!(t, BonusToken::ShareHex))
+        {
+            action.tokens.push(share_idx);
+        } else {
+            return None;
+        }
+    }
     Some(MoveCandidate {
         node_idx,
-        action: MoveAction::multi_card(card_indices, dir),
+        action,
         num_barriers: 0,
     })
 }

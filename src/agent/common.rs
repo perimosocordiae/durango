@@ -28,14 +28,28 @@ pub(super) fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
     // Start with regular card moves.
     let mut valid_moves: Vec<MoveAction> = uniq_hand
         .into_iter()
-        .flat_map(|(c, i)| all_moves_for_card(c, i, game, my_idx))
+        .filter_map(|(_, i)| {
+            all_moves_for_item(MoveIndex::Card(i), game, my_idx)
+        })
+        .flatten()
         .map(|cand| cand.action)
         .collect();
     // Also consider any token-only moves.
-    valid_moves
-        .extend(all_token_only_moves(game, my_idx).map(|cand| cand.action));
+    valid_moves.extend(
+        (0..me.tokens.len())
+            .filter_map(|i| {
+                all_moves_for_item(MoveIndex::Token(i), game, my_idx)
+            })
+            .flatten()
+            .map(|cand| cand.action),
+    );
     // Next, consider single-step moves (cave, swamp, village).
+    // TODO: refactor this to avoid duplication with greedy.rs impl.
     let from_board = game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
+    let share_hex_idx = me
+        .tokens
+        .iter()
+        .position(|t| matches!(t, BonusToken::ShareHex));
     for (dir, pos, node) in game.neighbors_of(me.position) {
         if let Some(barrier_idx) =
             game.barrier_index(from_board, node.board_idx as usize)
@@ -52,35 +66,34 @@ pub(super) fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
             }
             continue;
         }
-        if game.is_occupied(pos) {
+        if matches!(node.terrain, Terrain::Cave) && !game.can_visit_cave(pos) {
+            valid_moves.push(MoveAction::cave(dir));
             continue;
         }
-        match node.terrain {
-            Terrain::Cave => {
-                if game.can_visit_cave(pos) {
-                    valid_moves.push(MoveAction::cave(dir));
-                }
-            }
-            Terrain::Swamp => {
-                // TODO: generate all length-cost combinations of cards.
-                if me.hand.len() >= node.cost as usize {
-                    valid_moves.push(MoveAction::multi_card(
-                        (0..node.cost as usize).collect(),
-                        dir,
-                    ));
-                }
-            }
-            Terrain::Village => {
-                // TODO: generate all length-cost combinations of cards.
-                if me.num_cards() > 4 && me.hand.len() >= node.cost as usize {
-                    valid_moves.push(MoveAction::multi_card(
-                        (0..node.cost as usize).collect(),
-                        dir,
-                    ));
-                }
-            }
-            _ => {}
+        let must_trash = match node.terrain {
+            Terrain::Village => true,
+            Terrain::Swamp => false,
+            _ => continue,
+        };
+        if me.hand.len() < node.cost as usize
+            || (must_trash && me.num_cards() <= 4)
+        {
+            continue;
         }
+        let mut tokens = Vec::new();
+        if game.is_occupied(pos) {
+            if let Some(share_idx) = share_hex_idx {
+                tokens.push(share_idx);
+            } else {
+                continue;
+            }
+        }
+        // TODO: generate all length-cost combinations of cards.
+        valid_moves.push(MoveAction {
+            cards: (0..node.cost as usize).collect(),
+            tokens,
+            path: vec![dir],
+        });
     }
     valid_moves
 }
@@ -191,82 +204,67 @@ pub(super) struct MoveCandidate {
     pub num_barriers: usize,
 }
 
-enum MoveIndex {
+pub(super) enum MoveIndex {
     Card(usize),
     Token(usize),
 }
 
-pub(super) fn all_moves_for_card<'a>(
-    card: &'a Card,
-    card_idx: usize,
+pub(super) fn all_moves_for_item<'a>(
+    move_idx: MoveIndex,
     game: &'a GameState,
     my_idx: usize,
-) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
-    // Check for free moves first.
-    if let Some(CardAction::FreeMove) = card.action {
-        return Box::new(all_free_moves(
-            game,
-            MoveIndex::Card(card_idx),
-            my_idx,
-        ));
-    }
-    // Otherwise, we need to consider terrain and cost.
-    Box::new(
-        all_moves_helper(&card.movement, game, my_idx)
-            .into_iter()
-            .map(move |seen| MoveCandidate {
-                node_idx: seen.node_idx,
-                action: MoveAction::single_card(card_idx, seen.path),
-                num_barriers: seen.num_barriers,
-            }),
-    )
-}
-
-pub(super) fn all_token_only_moves(
-    game: &GameState,
-    my_idx: usize,
-) -> impl Iterator<Item = MoveCandidate> {
+) -> Option<Box<dyn Iterator<Item = MoveCandidate> + 'a>> {
     let me = game.curr_player();
-    let mut iters: Vec<Box<dyn Iterator<Item = MoveCandidate>>> =
-        Vec::with_capacity(me.tokens.len());
-    for (i, tok) in me.tokens.iter().enumerate() {
-        match tok {
-            BonusToken::FreeMove => {
-                iters.push(Box::new(all_free_moves(
-                    game,
-                    MoveIndex::Token(i),
-                    my_idx,
-                )));
+    match move_idx {
+        MoveIndex::Card(card_idx) => {
+            let card = &me.hand[card_idx];
+            if let Some(CardAction::FreeMove) = card.action {
+                return Some(Box::new(all_free_moves(game, move_idx, my_idx)));
             }
-            BonusToken::Jungle(_)
-            | BonusToken::Desert(_)
-            | BonusToken::Water(_) => {
-                let movement = token_to_movement(tok);
-                iters.push(Box::new(
+            Some(Box::new(
+                all_moves_helper(&card.movement, game, my_idx)
+                    .into_iter()
+                    .map(move |seen| MoveCandidate {
+                        node_idx: seen.node_idx,
+                        action: MoveAction::single_card(card_idx, seen.path),
+                        num_barriers: seen.num_barriers,
+                    }),
+            ))
+        }
+        MoveIndex::Token(token_idx) => {
+            let token = &me.tokens[token_idx];
+            if matches!(token, BonusToken::FreeMove) {
+                return Some(Box::new(all_free_moves(game, move_idx, my_idx)));
+            }
+            if let Some(movement) = token_to_movement(token) {
+                return Some(Box::new(
                     all_moves_helper(&movement, game, my_idx).into_iter().map(
                         move |seen| MoveCandidate {
                             node_idx: seen.node_idx,
-                            action: MoveAction::single_token(i, seen.path),
+                            action: MoveAction::single_token(
+                                token_idx, seen.path,
+                            ),
                             num_barriers: seen.num_barriers,
                         },
                     ),
                 ));
             }
-            _ => {}
+            None
         }
     }
-    iters.into_iter().flatten()
 }
 
-fn token_to_movement(token: &BonusToken) -> [u8; 3] {
+fn token_to_movement(token: &BonusToken) -> Option<[u8; 3]> {
     let mut movement = [0u8; 3];
     match token {
         BonusToken::Jungle(v) => movement[0] = *v,
         BonusToken::Desert(v) => movement[1] = *v,
         BonusToken::Water(v) => movement[2] = *v,
-        _ => {}
+        _ => {
+            return None;
+        }
     }
-    movement
+    Some(movement)
 }
 
 fn all_free_moves(
@@ -276,14 +274,18 @@ fn all_free_moves(
 ) -> impl Iterator<Item = MoveCandidate> {
     let curr_board_idx =
         game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
+    let share_hex_idx = game
+        .curr_player()
+        .tokens
+        .iter()
+        .position(|t| matches!(t, BonusToken::ShareHex));
     game.graph
         .neighbor_indices(my_idx)
         .filter_map(move |(nbr_idx, dir)| {
-            let pos = game.map.coord_at_idx(nbr_idx)?;
-            if game.is_occupied(pos) {
+            let node = game.map.node_at_idx(nbr_idx)?;
+            if matches!(node.terrain, Terrain::Invalid | Terrain::Cave) {
                 return None;
             }
-            let node = game.map.node_at_idx(nbr_idx)?;
             // Free moves cannot be used to break barriers.
             if game
                 .barrier_index(curr_board_idx, node.board_idx as usize)
@@ -291,21 +293,28 @@ fn all_free_moves(
             {
                 return None;
             }
-            match node.terrain {
-                Terrain::Invalid | Terrain::Cave => None,
-                _ => Some(MoveCandidate {
-                    node_idx: nbr_idx,
-                    action: match move_idx {
-                        MoveIndex::Token(token_idx) => {
-                            MoveAction::single_token(token_idx, vec![dir])
-                        }
-                        MoveIndex::Card(card_idx) => {
-                            MoveAction::single_card(card_idx, vec![dir])
-                        }
-                    },
-                    num_barriers: 0,
-                }),
+            let mut action = match move_idx {
+                MoveIndex::Token(token_idx) => {
+                    MoveAction::single_token(token_idx, vec![dir])
+                }
+                MoveIndex::Card(card_idx) => {
+                    MoveAction::single_card(card_idx, vec![dir])
+                }
+            };
+            // Occupied hexes can only be moved into if we have a ShareHex token.
+            let pos = game.map.coord_at_idx(nbr_idx)?;
+            if game.is_occupied(pos) {
+                if let Some(share_idx) = share_hex_idx {
+                    action.tokens.push(share_idx);
+                } else {
+                    return None;
+                }
             }
+            Some(MoveCandidate {
+                node_idx: nbr_idx,
+                action,
+                num_barriers: 0,
+            })
         })
 }
 
