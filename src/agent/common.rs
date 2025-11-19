@@ -246,18 +246,21 @@ pub(super) fn all_moves_for_item<'a>(
             }
         }
     };
-    Some(Box::new(seen_moves.into_iter().map(move |seen| {
+    Some(Box::new(seen_moves.into_iter().map(move |mut seen| {
         MoveCandidate {
             node_idx: seen.node_idx,
             action: match move_idx {
-                MoveIndex::Token(token_idx) => MoveAction {
-                    cards: Vec::new(),
-                    tokens: vec![token_idx],
-                    path: seen.path,
-                },
+                MoveIndex::Token(token_idx) => {
+                    seen.tokens.push(token_idx);
+                    MoveAction {
+                        cards: Vec::new(),
+                        tokens: seen.tokens,
+                        path: seen.path,
+                    }
+                }
                 MoveIndex::Card(card_idx) => MoveAction {
                     cards: vec![card_idx],
-                    tokens: Vec::new(),
+                    tokens: seen.tokens,
                     path: seen.path,
                 },
             },
@@ -334,6 +337,7 @@ struct SeenMove {
     node_idx: usize,
     path: Vec<HexDirection>,
     num_barriers: usize,
+    tokens: Vec<usize>,
 }
 
 fn all_moves_helper(
@@ -342,11 +346,17 @@ fn all_moves_helper(
     my_idx: usize,
 ) -> Vec<SeenMove> {
     let max_move = *movement.iter().max().unwrap();
+    let share_hex_idx = game
+        .curr_player()
+        .tokens
+        .iter()
+        .position(|t| matches!(t, BonusToken::ShareHex));
     struct QueueElem {
         idx: usize,
         path: Vec<HexDirection>,
         cost: [u8; 3],
         barriers: Vec<usize>,
+        tokens: Vec<usize>,
     }
     let mut queue = VecDeque::new();
     queue.push_back(QueueElem {
@@ -354,12 +364,14 @@ fn all_moves_helper(
         path: Vec::new(),
         cost: [0u8; 3],
         barriers: Vec::new(),
+        tokens: Vec::new(),
     });
     // Track paths for all seen hexes.
     let mut seen = vec![SeenMove {
         node_idx: my_idx,
         path: Vec::new(),
         num_barriers: 0,
+        tokens: Vec::new(),
     }];
     while let Some(elem) = queue.pop_front() {
         if elem.path.len() >= max_move as usize {
@@ -403,17 +415,17 @@ fn all_moves_helper(
                     node_idx: elem.idx,
                     path: new_path.clone(),
                     num_barriers: new_barriers.len(),
+                    tokens: elem.tokens.clone(),
                 });
                 queue.push_back(QueueElem {
                     idx: elem.idx,
                     path: new_path,
                     cost: new_cost,
                     barriers: new_barriers,
+                    tokens: elem.tokens.clone(),
                 });
             } else {
-                let pos = game.map.coord_at_idx(nbr_idx).unwrap();
                 if node.cost > max_move
-                    || game.is_occupied(pos)
                     || seen.iter().any(|s| s.node_idx == nbr_idx)
                 {
                     continue;
@@ -434,18 +446,30 @@ fn all_moves_helper(
                 if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
                     continue;
                 }
+
+                let pos = game.map.coord_at_idx(nbr_idx).unwrap();
+                let mut new_tokens = elem.tokens.clone();
+                if game.is_occupied(pos) {
+                    if let Some(share_idx) = share_hex_idx {
+                        new_tokens.push(share_idx);
+                    } else {
+                        continue;
+                    }
+                }
                 let mut new_path = elem.path.clone();
                 new_path.push(dir);
                 seen.push(SeenMove {
                     node_idx: nbr_idx,
                     path: new_path.clone(),
                     num_barriers: elem.barriers.len(),
+                    tokens: new_tokens.clone(),
                 });
                 queue.push_back(QueueElem {
                     idx: nbr_idx,
                     path: new_path,
                     cost: new_cost,
                     barriers: elem.barriers.clone(),
+                    tokens: new_tokens,
                 });
             }
         }
