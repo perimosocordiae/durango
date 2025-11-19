@@ -333,6 +333,7 @@ fn all_free_moves(
         })
 }
 
+#[derive(Debug)]
 struct SeenMove {
     node_idx: usize,
     path: Vec<HexDirection>,
@@ -485,4 +486,30 @@ fn all_moves_helper(
     }
     // Drop the first seen entry because it's a null move.
     seen.split_off(1)
+}
+
+#[test]
+fn test_all_moves_helper() {
+    use crate::data::{AxialCoord, HexMap, LayoutInfo};
+    use assert_matches::assert_matches;
+
+    // cargo run --example render_board -- -f svg --layout='B,0,0,0;Z,0,4,-4' | display
+    let map = HexMap::create_custom(&[
+        LayoutInfo::new('B', 1, 0, 0),
+        LayoutInfo::new('Z', 0, 4, -4),
+    ])
+    .unwrap();
+    // Bottom left hex of the map.
+    let pos = AxialCoord { q: -3, r: 3 };
+    let players = vec![Player::new(pos, &mut rand::rng())];
+    let game = GameState::from_parts(map, players, 0);
+
+    // No movement => no moves.
+    let seen = all_moves_helper(&[0, 0, 0], &game, 0);
+    assert_eq!(seen.len(), 0);
+
+    // 1 jungle move => 3 moves (NW, NE, E).
+    let seen = all_moves_helper(&[1, 0, 0], &game, 0);
+    assert_eq!(seen.len(), 3);
+    assert_matches!(&seen[0], SeenMove { node_idx: _, path, num_barriers: 0, tokens: _ } if path.len() == 2);
 }
