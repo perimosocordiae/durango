@@ -209,49 +209,61 @@ pub(super) enum MoveIndex {
     Token(usize),
 }
 
+fn is_free_move(move_idx: &MoveIndex, me: &Player) -> bool {
+    match move_idx {
+        MoveIndex::Card(card_idx) => {
+            if let Some(CardAction::FreeMove) = me.hand[*card_idx].action {
+                return true;
+            }
+        }
+        MoveIndex::Token(token_idx) => {
+            if matches!(me.tokens[*token_idx], BonusToken::FreeMove) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub(super) fn all_moves_for_item<'a>(
     move_idx: MoveIndex,
     game: &'a GameState,
     my_idx: usize,
 ) -> Option<Box<dyn Iterator<Item = MoveCandidate> + 'a>> {
     let me = game.curr_player();
-    match move_idx {
+    if is_free_move(&move_idx, me) {
+        return Some(Box::new(all_free_moves(game, move_idx, my_idx)));
+    }
+    let seen_moves = match &move_idx {
         MoveIndex::Card(card_idx) => {
-            let card = &me.hand[card_idx];
-            if let Some(CardAction::FreeMove) = card.action {
-                return Some(Box::new(all_free_moves(game, move_idx, my_idx)));
-            }
-            Some(Box::new(
-                all_moves_helper(&card.movement, game, my_idx)
-                    .into_iter()
-                    .map(move |seen| MoveCandidate {
-                        node_idx: seen.node_idx,
-                        action: MoveAction::single_card(card_idx, seen.path),
-                        num_barriers: seen.num_barriers,
-                    }),
-            ))
+            all_moves_helper(&me.hand[*card_idx].movement, game, my_idx)
         }
         MoveIndex::Token(token_idx) => {
-            let token = &me.tokens[token_idx];
-            if matches!(token, BonusToken::FreeMove) {
-                return Some(Box::new(all_free_moves(game, move_idx, my_idx)));
+            if let Some(mv) = token_to_movement(&me.tokens[*token_idx]) {
+                all_moves_helper(&mv, game, my_idx)
+            } else {
+                return None;
             }
-            if let Some(movement) = token_to_movement(token) {
-                return Some(Box::new(
-                    all_moves_helper(&movement, game, my_idx).into_iter().map(
-                        move |seen| MoveCandidate {
-                            node_idx: seen.node_idx,
-                            action: MoveAction::single_token(
-                                token_idx, seen.path,
-                            ),
-                            num_barriers: seen.num_barriers,
-                        },
-                    ),
-                ));
-            }
-            None
         }
-    }
+    };
+    Some(Box::new(seen_moves.into_iter().map(move |seen| {
+        MoveCandidate {
+            node_idx: seen.node_idx,
+            action: match move_idx {
+                MoveIndex::Token(token_idx) => MoveAction {
+                    cards: Vec::new(),
+                    tokens: vec![token_idx],
+                    path: seen.path,
+                },
+                MoveIndex::Card(card_idx) => MoveAction {
+                    cards: vec![card_idx],
+                    tokens: Vec::new(),
+                    path: seen.path,
+                },
+            },
+            num_barriers: seen.num_barriers,
+        }
+    })))
 }
 
 fn token_to_movement(token: &BonusToken) -> Option<[u8; 3]> {
