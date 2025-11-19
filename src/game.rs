@@ -701,6 +701,12 @@ impl GameState {
                         BonusToken::ShareHex => {
                             num_share_hex += 1;
                         }
+                        BonusToken::SwapSymbol => {
+                            return Err(
+                                "Only cards can have their symbols swapped"
+                                    .into(),
+                            );
+                        }
                         _ => {
                             return Err(format!(
                                 "Cannot use token {:?} to move",
