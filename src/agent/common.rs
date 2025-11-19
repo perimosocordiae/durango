@@ -495,21 +495,37 @@ fn test_all_moves_helper() {
 
     // cargo run --example render_board -- -f svg --layout='B,0,0,0;Z,0,4,-4' | display
     let map = HexMap::create_custom(&[
-        LayoutInfo::new('B', 1, 0, 0),
+        LayoutInfo::new('B', 0, 0, 0),
         LayoutInfo::new('Z', 0, 4, -4),
     ])
     .unwrap();
     // Bottom left hex of the map.
     let pos = AxialCoord { q: -3, r: 3 };
+    let my_idx = map.node_idx(pos).unwrap();
     let players = vec![Player::new(pos, &mut rand::rng())];
     let game = GameState::from_parts(map, players, 0);
 
     // No movement => no moves.
-    let seen = all_moves_helper(&[0, 0, 0], &game, 0);
+    let seen = all_moves_helper(&[0, 0, 0], &game, my_idx);
     assert_eq!(seen.len(), 0);
 
     // 1 jungle move => 3 moves (NW, NE, E).
-    let seen = all_moves_helper(&[1, 0, 0], &game, 0);
+    let seen = all_moves_helper(&[1, 0, 0], &game, my_idx);
     assert_eq!(seen.len(), 3);
     assert_matches!(&seen[0], SeenMove { node_idx: _, path, num_barriers: 0, tokens: _ } if path.len() == 1);
+
+    // 1 desert / water move => no moves.
+    let seen = all_moves_helper(&[0, 1, 0], &game, my_idx);
+    assert_eq!(seen.len(), 0);
+    let seen = all_moves_helper(&[0, 0, 1], &game, my_idx);
+    assert_eq!(seen.len(), 0);
+
+    // 2 wildcard moves => 7 total moves.
+    let seen = all_moves_helper(&[2, 2, 2], &game, my_idx);
+    assert_eq!(
+        seen.len(),
+        7,
+        "Expected 7 moves, found {}:\n{seen:?}",
+        seen.len()
+    );
 }
