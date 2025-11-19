@@ -32,13 +32,8 @@ pub(super) fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
         .map(|cand| cand.action)
         .collect();
     // Also consider any token-only moves.
-    valid_moves.extend(
-        me.tokens
-            .iter()
-            .enumerate()
-            .flat_map(|(i, tok)| all_moves_for_token(tok, i, game, my_idx))
-            .map(|cand| cand.action),
-    );
+    valid_moves
+        .extend(all_token_only_moves(game, my_idx).map(|cand| cand.action));
     // Next, consider single-step moves (cave, swamp, village).
     let from_board = game.map.node_at_idx(my_idx).unwrap().board_idx as usize;
     for (dir, pos, node) in game.neighbors_of(me.position) {
@@ -227,19 +222,43 @@ pub(super) fn all_moves_for_card<'a>(
     )
 }
 
-pub(super) fn all_moves_for_token<'a>(
-    token: &'a BonusToken,
-    token_idx: usize,
-    game: &'a GameState,
+pub(super) fn all_token_only_moves(
+    game: &GameState,
     my_idx: usize,
-) -> Box<dyn Iterator<Item = MoveCandidate> + 'a> {
-    if matches!(token, BonusToken::FreeMove) {
-        return Box::new(all_free_moves(
-            game,
-            MoveIndex::Token(token_idx),
-            my_idx,
-        ));
+) -> impl Iterator<Item = MoveCandidate> {
+    let me = game.curr_player();
+    let mut iters: Vec<Box<dyn Iterator<Item = MoveCandidate>>> =
+        Vec::with_capacity(me.tokens.len());
+    for (i, tok) in me.tokens.iter().enumerate() {
+        match tok {
+            BonusToken::FreeMove => {
+                iters.push(Box::new(all_free_moves(
+                    game,
+                    MoveIndex::Token(i),
+                    my_idx,
+                )));
+            }
+            BonusToken::Jungle(_)
+            | BonusToken::Desert(_)
+            | BonusToken::Water(_) => {
+                let movement = token_to_movement(tok);
+                iters.push(Box::new(
+                    all_moves_helper(&movement, game, my_idx).into_iter().map(
+                        move |seen| MoveCandidate {
+                            node_idx: seen.node_idx,
+                            action: MoveAction::single_token(i, seen.path),
+                            num_barriers: seen.num_barriers,
+                        },
+                    ),
+                ));
+            }
+            _ => {}
+        }
     }
+    iters.into_iter().flatten()
+}
+
+fn token_to_movement(token: &BonusToken) -> [u8; 3] {
     let mut movement = [0u8; 3];
     match token {
         BonusToken::Jungle(v) => movement[0] = *v,
@@ -247,13 +266,7 @@ pub(super) fn all_moves_for_token<'a>(
         BonusToken::Water(v) => movement[2] = *v,
         _ => {}
     }
-    Box::new(all_moves_helper(&movement, game, my_idx).into_iter().map(
-        move |seen| MoveCandidate {
-            node_idx: seen.node_idx,
-            action: MoveAction::single_token(token_idx, seen.path),
-            num_barriers: seen.num_barriers,
-        },
-    ))
+    movement
 }
 
 fn all_free_moves(

@@ -89,10 +89,7 @@ impl Agent for GreedyAgent {
                 },
             ));
         // Also consider any token-only moves.
-        let moves =
-            moves.chain(me.tokens.iter().enumerate().flat_map(|(i, tok)| {
-                all_moves_for_token(tok, i, game, my_idx)
-            }));
+        let moves = moves.chain(all_token_only_moves(game, my_idx));
         // TODO: score moves by some heuristic function instead of just distance
         // to the finish. Account for value of cards used, etc.
         let dists = &game.graph.dists;
