@@ -346,11 +346,13 @@ fn all_moves_helper(
     my_idx: usize,
 ) -> Vec<SeenMove> {
     let max_move = *movement.iter().max().unwrap();
-    let share_hex_idx = game
-        .curr_player()
-        .tokens
+    let my_tokens = &game.curr_player().tokens;
+    let share_hex_idx = my_tokens
         .iter()
         .position(|t| matches!(t, BonusToken::ShareHex));
+    let swap_symbol_idx = my_tokens
+        .iter()
+        .position(|t| matches!(t, BonusToken::SwapSymbol));
     struct QueueElem {
         idx: usize,
         path: Vec<HexDirection>,
@@ -358,6 +360,37 @@ fn all_moves_helper(
         barriers: Vec<usize>,
         tokens: Vec<usize>,
     }
+
+    let move_helper = |terrain: Terrain,
+                       terrain_cost: u8,
+                       elem: &QueueElem|
+     -> Option<([u8; 3], Vec<usize>)> {
+        let terrain_idx = match terrain {
+            Terrain::Jungle => 0,
+            Terrain::Desert => 1,
+            Terrain::Water => 2,
+            _ => {
+                return None;
+            }
+        };
+        let mut new_cost = elem.cost;
+        new_cost[terrain_idx] += terrain_cost;
+        if new_cost[terrain_idx] > max_move
+            || new_cost.iter().filter(|&&c| c > 0).count() != 1
+        {
+            return None;
+        }
+        let mut new_tokens = elem.tokens.clone();
+        if new_cost[terrain_idx] > movement[terrain_idx] {
+            if let Some(swap_idx) = swap_symbol_idx {
+                new_tokens.push(swap_idx);
+            } else {
+                return None;
+            }
+        }
+        Some((new_cost, new_tokens))
+    };
+
     let mut queue = VecDeque::new();
     queue.push_back(QueueElem {
         idx: my_idx,
@@ -391,22 +424,11 @@ fn all_moves_helper(
                 if barrier.cost > max_move {
                     continue;
                 }
-                let terrain_idx = match barrier.terrain {
-                    Terrain::Jungle => 0,
-                    Terrain::Desert => 1,
-                    Terrain::Water => 2,
-                    _ => {
-                        continue;
-                    }
+                let Some((new_cost, new_tokens)) =
+                    move_helper(barrier.terrain, barrier.cost, &elem)
+                else {
+                    continue;
                 };
-                let mut new_cost = elem.cost;
-                new_cost[terrain_idx] += barrier.cost;
-                if new_cost[terrain_idx] > movement[terrain_idx] {
-                    continue;
-                }
-                if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
-                    continue;
-                }
                 let mut new_path = elem.path.clone();
                 new_path.push(dir);
                 let mut new_barriers = elem.barriers.clone();
@@ -415,14 +437,14 @@ fn all_moves_helper(
                     node_idx: elem.idx,
                     path: new_path.clone(),
                     num_barriers: new_barriers.len(),
-                    tokens: elem.tokens.clone(),
+                    tokens: new_tokens.clone(),
                 });
                 queue.push_back(QueueElem {
                     idx: elem.idx,
                     path: new_path,
                     cost: new_cost,
                     barriers: new_barriers,
-                    tokens: elem.tokens.clone(),
+                    tokens: new_tokens,
                 });
             } else {
                 if node.cost > max_move
@@ -430,25 +452,12 @@ fn all_moves_helper(
                 {
                     continue;
                 }
-                let terrain_idx = match node.terrain {
-                    Terrain::Jungle => 0,
-                    Terrain::Desert => 1,
-                    Terrain::Water => 2,
-                    _ => {
-                        continue;
-                    }
+                let Some((new_cost, mut new_tokens)) =
+                    move_helper(node.terrain, node.cost, &elem)
+                else {
+                    continue;
                 };
-                let mut new_cost = elem.cost;
-                new_cost[terrain_idx] += node.cost;
-                if new_cost[terrain_idx] > movement[terrain_idx] {
-                    continue;
-                }
-                if new_cost.iter().filter(|&&c| c > 0).count() != 1 {
-                    continue;
-                }
-
                 let pos = game.map.coord_at_idx(nbr_idx).unwrap();
-                let mut new_tokens = elem.tokens.clone();
                 if game.is_occupied(pos) {
                     if let Some(share_idx) = share_hex_idx {
                         new_tokens.push(share_idx);

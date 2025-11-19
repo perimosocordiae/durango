@@ -139,7 +139,7 @@ pub enum BonusToken {
     DoubleUse, // TODO: teach agents to use
     ShareHex,
     FreeMove,
-    SwapSymbol, // TODO: teach agents to use
+    SwapSymbol,
 }
 impl BonusToken {
     pub fn gold_value(&self) -> u8 {
