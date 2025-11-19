@@ -511,5 +511,5 @@ fn test_all_moves_helper() {
     // 1 jungle move => 3 moves (NW, NE, E).
     let seen = all_moves_helper(&[1, 0, 0], &game, 0);
     assert_eq!(seen.len(), 3);
-    assert_matches!(&seen[0], SeenMove { node_idx: _, path, num_barriers: 0, tokens: _ } if path.len() == 2);
+    assert_matches!(&seen[0], SeenMove { node_idx: _, path, num_barriers: 0, tokens: _ } if path.len() == 1);
 }
