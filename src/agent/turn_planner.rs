@@ -178,10 +178,16 @@ fn find_best_action(
     let mut num_sims = 0;
     for action in all_actions(game) {
         let mut simulated_game = game.clone();
-        let outcome = simulated_game.process_action(&action).expect(&format!(
-            "Simulation failed for move: {action:?}\nwith tokens: {:?}",
-            simulated_game.curr_player().tokens
-        ));
+        let outcome = match simulated_game.process_action(&action) {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                let p = simulated_game.curr_player();
+                panic!(
+                    "Simulation failed: {e}\n for move: {action:?}\n hand={:?}\n tokens={:?}",
+                    p.hand, p.tokens
+                );
+            }
+        };
         num_sims += 1;
         // If this ends the game, no need to keep going.
         if matches!(outcome, ActionOutcome::GameOver) {
