@@ -255,7 +255,19 @@ pub(super) fn all_moves_for_item<'a>(
             }
         }
     };
+    let double_use_idx = if let MoveIndex::Card(card_idx) = move_idx
+        && me.hand[card_idx].single_use
+    {
+        me.tokens
+            .iter()
+            .position(|t| matches!(t, BonusToken::DoubleUse))
+    } else {
+        None
+    };
     Some(Box::new(seen_moves.into_iter().map(move |mut seen| {
+        if let Some(i) = double_use_idx {
+            seen.tokens.push(i);
+        }
         MoveCandidate {
             node_idx: seen.node_idx,
             action: match move_idx {

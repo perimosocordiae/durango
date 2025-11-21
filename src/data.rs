@@ -136,7 +136,7 @@ pub enum BonusToken {
     DrawCard,
     TrashCard,
     ReplaceHand,
-    DoubleUse, // TODO: teach agents to use
+    DoubleUse,
     ShareHex,
     FreeMove,
     SwapSymbol,
