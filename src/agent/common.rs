@@ -66,7 +66,7 @@ pub(super) fn valid_move_actions(game: &GameState) -> Vec<MoveAction> {
             }
             continue;
         }
-        if matches!(node.terrain, Terrain::Cave) && !game.can_visit_cave(pos) {
+        if matches!(node.terrain, Terrain::Cave) && game.can_visit_cave(pos) {
             valid_moves.push(MoveAction::cave(dir));
             continue;
         }
@@ -236,11 +236,20 @@ pub(super) fn all_moves_for_item<'a>(
     }
     let seen_moves = match &move_idx {
         MoveIndex::Card(card_idx) => {
-            all_moves_helper(&me.hand[*card_idx].movement, game, my_idx)
+            let swap_symbol_idx = me
+                .tokens
+                .iter()
+                .position(|t| matches!(t, BonusToken::SwapSymbol));
+            all_moves_helper(
+                &me.hand[*card_idx].movement,
+                game,
+                my_idx,
+                swap_symbol_idx,
+            )
         }
         MoveIndex::Token(token_idx) => {
             if let Some(mv) = token_to_movement(&me.tokens[*token_idx]) {
-                all_moves_helper(&mv, game, my_idx)
+                all_moves_helper(&mv, game, my_idx, None)
             } else {
                 return None;
             }
@@ -345,15 +354,13 @@ fn all_moves_helper(
     movement: &[u8; 3],
     game: &GameState,
     my_idx: usize,
+    swap_symbol_idx: Option<usize>,
 ) -> Vec<SeenMove> {
     let max_move = *movement.iter().max().unwrap();
     let my_tokens = &game.curr_player().tokens;
     let share_hex_idx = my_tokens
         .iter()
         .position(|t| matches!(t, BonusToken::ShareHex));
-    let swap_symbol_idx = my_tokens
-        .iter()
-        .position(|t| matches!(t, BonusToken::SwapSymbol));
     struct QueueElem {
         idx: usize,
         path: Vec<HexDirection>,
@@ -384,7 +391,9 @@ fn all_moves_helper(
         let mut new_tokens = elem.tokens.clone();
         if new_cost[terrain_idx] > movement[terrain_idx] {
             if let Some(swap_idx) = swap_symbol_idx {
-                new_tokens.push(swap_idx);
+                if !new_tokens.contains(&swap_idx) {
+                    new_tokens.push(swap_idx);
+                }
             } else {
                 return None;
             }
@@ -461,7 +470,9 @@ fn all_moves_helper(
                 let pos = game.map.coord_at_idx(nbr_idx).unwrap();
                 if game.is_occupied(pos) {
                     if let Some(share_idx) = share_hex_idx {
-                        new_tokens.push(share_idx);
+                        if !new_tokens.contains(&share_idx) {
+                            new_tokens.push(share_idx);
+                        }
                     } else {
                         continue;
                     }
@@ -506,22 +517,31 @@ fn test_all_moves_helper() {
     let game = GameState::from_parts(map, players, 0);
 
     // No movement => no moves.
-    let seen = all_moves_helper(&[0, 0, 0], &game, my_idx);
+    let seen = all_moves_helper(&[0, 0, 0], &game, my_idx, None);
     assert_eq!(seen.len(), 0);
 
     // 1 jungle move => 3 moves (NW, NE, E).
-    let seen = all_moves_helper(&[1, 0, 0], &game, my_idx);
+    let seen = all_moves_helper(&[1, 0, 0], &game, my_idx, None);
     assert_eq!(seen.len(), 3);
     assert_matches!(&seen[0], SeenMove { node_idx: _, path, num_barriers: 0, tokens: _ } if path.len() == 1);
 
     // 1 desert / water move => no moves.
-    let seen = all_moves_helper(&[0, 1, 0], &game, my_idx);
+    let seen = all_moves_helper(&[0, 1, 0], &game, my_idx, None);
     assert_eq!(seen.len(), 0);
-    let seen = all_moves_helper(&[0, 0, 1], &game, my_idx);
+    let seen = all_moves_helper(&[0, 0, 1], &game, my_idx, None);
     assert_eq!(seen.len(), 0);
 
     // 2 wildcard moves => 7 total moves.
-    let seen = all_moves_helper(&[2, 2, 2], &game, my_idx);
+    let seen = all_moves_helper(&[2, 2, 2], &game, my_idx, None);
+    assert_eq!(
+        seen.len(),
+        7,
+        "Expected 7 moves, found {}:\n{seen:?}",
+        seen.len()
+    );
+
+    // 2 desert moves with SwapSymbol token => 7 moves.
+    let seen = all_moves_helper(&[0, 2, 0], &game, my_idx, Some(0));
     assert_eq!(
         seen.len(),
         7,

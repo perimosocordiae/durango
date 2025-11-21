@@ -89,6 +89,15 @@ impl Player {
             self.hand.swap_remove(i);
         }
     }
+    /// Remove specified `tokens` from self.tokens permanently.
+    pub(crate) fn trash_tokens(&mut self, tokens: &[usize]) {
+        if tokens.is_empty() {
+            return;
+        }
+        for i in rev_sorted(tokens) {
+            self.tokens.swap_remove(i);
+        }
+    }
     /// Fill hand from the deck, adding shuffled cards from the discard if needed.
     pub(crate) fn fill_hand(
         &mut self,

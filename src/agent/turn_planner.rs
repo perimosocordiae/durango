@@ -2,8 +2,8 @@ use std::cell::OnceCell;
 
 use crate::agent::common::*;
 use crate::cards::{Card, CardAction};
-use crate::data::{Node, Terrain};
-use crate::game::{ActionOutcome, GameState, PlayerAction};
+use crate::data::{BonusToken, Node, Terrain};
+use crate::game::{ActionOutcome, DrawAction, GameState, PlayerAction};
 use crate::player::Player;
 
 trait GameScorer {
@@ -178,7 +178,10 @@ fn find_best_action(
     let mut num_sims = 0;
     for action in all_actions(game) {
         let mut simulated_game = game.clone();
-        let outcome = simulated_game.process_action(&action).unwrap();
+        let outcome = simulated_game.process_action(&action).expect(&format!(
+            "Simulation failed for move: {action:?}\nwith tokens: {:?}",
+            simulated_game.curr_player().tokens
+        ));
         num_sims += 1;
         // If this ends the game, no need to keep going.
         if matches!(outcome, ActionOutcome::GameOver) {
@@ -199,6 +202,21 @@ fn find_best_action(
                 score: res.score,
             };
         }
+    }
+    // Special case: if we'd simply discard 2+ cards, try using ReplaceHand.
+    // We don't simulate this because it would "cheat" by looking at the deck.
+    if num_cards > 1
+        && matches!(best.action, PlayerAction::Discard(_))
+        && let Some(idx) = game
+            .curr_player()
+            .tokens
+            .iter()
+            .position(|t| matches!(t, BonusToken::ReplaceHand))
+    {
+        best.action = PlayerAction::Draw(DrawAction {
+            card: None,
+            token: Some(idx),
+        });
     }
     (best, num_sims)
 }

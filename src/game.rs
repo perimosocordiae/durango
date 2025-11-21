@@ -64,12 +64,9 @@ impl MoveAction {
         {
             return matches!(card.action, Some(CardAction::FreeMove));
         }
-        if self.tokens.len() == 1
-            && let Some(tok) = player.tokens.get(self.tokens[0])
-        {
-            return matches!(tok, BonusToken::FreeMove);
-        }
-        false
+        self.tokens.iter().any(|&idx| {
+            matches!(player.tokens.get(idx), Some(BonusToken::FreeMove))
+        })
     }
 }
 
@@ -463,10 +460,8 @@ impl GameState {
         // Ensure the shop remains sorted by cost. We only ever remove from
         // storage, so no need to re-sort that.
         self.shop.sort_unstable_by_key(|c| c.cost);
-        // Trash any used tokens. Assumes tokens are in sorted order.
-        for idx in buy.tokens.iter().rev() {
-            self.players[self.curr_player_idx].tokens.swap_remove(*idx);
-        }
+        // Trash any used tokens.
+        self.players[self.curr_player_idx].trash_tokens(&buy.tokens);
         Ok(())
     }
 
@@ -479,6 +474,20 @@ impl GameState {
             return Err("Must move at least once".into());
         }
         let tokens = &self.curr_player().tokens;
+        for idx in &mv.tokens {
+            match tokens[*idx] {
+                BonusToken::ReplaceHand => {
+                    return Err("Cannot move while replacing hand".into());
+                }
+                BonusToken::DrawCard => {
+                    return Err("Cannot move while drawing cards".into());
+                }
+                BonusToken::TrashCard => {
+                    return Err("Cannot move while trashing cards".into());
+                }
+                _ => {}
+            }
+        }
         let mut pos = self.curr_player().position;
         let mut board_idx = self
             .map
@@ -747,10 +756,8 @@ impl GameState {
         player
             .visited_caves
             .retain(|&cave_pos| pos.is_adjacent(cave_pos));
-        // Trash any used tokens. Assumes tokens are in sorted order.
-        for idx in mv.tokens.iter().rev() {
-            player.tokens.swap_remove(*idx);
-        }
+        // Trash any used tokens.
+        player.trash_tokens(&mv.tokens);
         // Remove broken barriers from the game.
         if let Some(idx) = broken_barrier {
             let barrier = self.barriers.swap_remove(idx);
