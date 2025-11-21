@@ -385,6 +385,9 @@ fn all_moves_helper(
                        terrain_cost: u8,
                        elem: &QueueElem|
      -> Option<([u8; 3], Vec<usize>)> {
+        if terrain_cost > max_move {
+            return None;
+        }
         let terrain_idx = match terrain {
             Terrain::Jungle => 0,
             Terrain::Desert => 1,
@@ -426,6 +429,9 @@ fn all_moves_helper(
         num_barriers: 0,
         tokens: Vec::new(),
     }];
+    // Keep track of visited hexes.
+    let mut visited = vec![false; game.map.num_nodes()];
+    visited[my_idx] = true;
     while let Some(elem) = queue.pop_front() {
         if elem.path.len() >= max_move as usize {
             continue;
@@ -441,9 +447,6 @@ fn all_moves_helper(
                 && !elem.barriers.contains(&barrier_idx)
             {
                 let barrier = &game.barriers[barrier_idx];
-                if barrier.cost > max_move {
-                    continue;
-                }
                 let Some((new_cost, new_tokens)) =
                     move_helper(barrier.terrain, barrier.cost, &elem)
                 else {
@@ -467,10 +470,7 @@ fn all_moves_helper(
                     tokens: new_tokens,
                 });
             } else {
-                // TODO: avoid a linear scan here.
-                if node.cost > max_move
-                    || seen.iter().any(|s| s.node_idx == nbr_idx)
-                {
+                if visited[nbr_idx] {
                     continue;
                 }
                 let Some((new_cost, mut new_tokens)) =
@@ -503,6 +503,7 @@ fn all_moves_helper(
                     barriers: elem.barriers.clone(),
                     tokens: new_tokens,
                 });
+                visited[nbr_idx] = true;
             }
         }
     }
