@@ -389,9 +389,7 @@ fn all_moves_helper(
             Terrain::Jungle => 0,
             Terrain::Desert => 1,
             Terrain::Water => 2,
-            _ => {
-                return None;
-            }
+            _ => return None,
         };
         let mut new_cost = elem.cost;
         new_cost[terrain_idx] += terrain_cost;
@@ -413,6 +411,9 @@ fn all_moves_helper(
         Some((new_cost, new_tokens))
     };
 
+    // TODO: change this from BFS to Dijkstra's algorithm.
+    // Need to be careful because we sometimes see the same node more than once,
+    // due to barrier-breaking.
     let mut queue = VecDeque::new();
     queue.push_back(QueueElem {
         idx: my_idx,
@@ -534,7 +535,12 @@ fn test_all_moves_helper() {
 
     // 1 jungle move => 3 moves (NW, NE, E).
     let seen = all_moves_helper(&[1, 0, 0], &game, my_idx, None);
-    assert_eq!(seen.len(), 3);
+    assert_eq!(
+        seen.len(),
+        3,
+        "Expected 3 moves, found {}:\n{seen:?}",
+        seen.len()
+    );
     assert_matches!(&seen[0], SeenMove { node_idx: _, path, num_barriers: 0, tokens: _ } if path.len() == 1);
 
     // 1 desert / water move => no moves.

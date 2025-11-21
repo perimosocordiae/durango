@@ -36,7 +36,7 @@ impl std::fmt::Debug for AxialCoord {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HexDirection {
     NorthEast,
     East,
@@ -451,6 +451,10 @@ impl HexMap {
             .zip(self.rs.iter())
             .zip(self.nodes.iter())
             .map(|((&q, &r), node)| (AxialCoord { q, r }, node))
+    }
+    /// Returns the number of nodes in the map.
+    pub fn num_nodes(&self) -> usize {
+        self.nodes.len()
     }
 }
 
