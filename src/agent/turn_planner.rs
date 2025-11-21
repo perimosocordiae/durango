@@ -201,6 +201,9 @@ fn find_best_action(
                 action,
                 score: res.score,
             };
+            if best.score == f64::MAX {
+                break;
+            }
         }
     }
     // Special case: if we'd simply discard 2+ cards, try using ReplaceHand.
