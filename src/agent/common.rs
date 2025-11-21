@@ -411,9 +411,6 @@ fn all_moves_helper(
         Some((new_cost, new_tokens))
     };
 
-    // TODO: change this from BFS to Dijkstra's algorithm.
-    // Need to be careful because we sometimes see the same node more than once,
-    // due to barrier-breaking.
     let mut queue = VecDeque::new();
     queue.push_back(QueueElem {
         idx: my_idx,
@@ -470,6 +467,7 @@ fn all_moves_helper(
                     tokens: new_tokens,
                 });
             } else {
+                // TODO: avoid a linear scan here.
                 if node.cost > max_move
                     || seen.iter().any(|s| s.node_idx == nbr_idx)
                 {
@@ -566,4 +564,98 @@ fn test_all_moves_helper() {
         "Expected 7 moves, found {}:\n{seen:?}",
         seen.len()
     );
+}
+
+#[test]
+fn test_finds_path() {
+    // Check that we can route around a high-cost node.
+    // start -> A(4) -> B(1) = 4 cost
+    // start -> C(1) -> D(1) -> E(1) -> B(1) = 4 cost
+    //
+    //  C D
+    // S A E
+    //  . B
+    use crate::data::{AxialCoord, HexMap, Node};
+    let j1 = Node {
+        terrain: Terrain::Jungle,
+        cost: 1,
+        board_idx: 0,
+    };
+    let j4 = Node {
+        terrain: Terrain::Jungle,
+        cost: 4,
+        board_idx: 0,
+    };
+    let end = Node {
+        terrain: Terrain::Jungle,
+        cost: 1,
+        board_idx: 1,
+    };
+    assert_eq!(serde_json::to_string(&j1).unwrap(), "4352");
+    assert_eq!(serde_json::to_string(&j4).unwrap(), "5120");
+    assert_eq!(serde_json::to_string(&end).unwrap(), "4353");
+
+    // Node order: S C A B D E
+    let map: HexMap = serde_json::from_str(
+        r#"{
+        "qs": [0, 1, 1, 1, 2, 2],
+        "rs": [0, -1, 0, 1, -1, 0],
+        "nodes": [4352, 4352, 5120, 4353, 4352, 4352],
+        "finish_idx": 1
+    }"#,
+    )
+    .unwrap();
+    let pos = AxialCoord { q: 0, r: 0 };
+    let my_idx = map.node_idx(pos).unwrap();
+    assert_eq!(my_idx, 0);
+    let players = vec![Player::new(pos, &mut rand::rng())];
+    let game = GameState::from_parts(map, players, 0);
+
+    let seen = all_moves_helper(&[4, 0, 0], &game, my_idx, None);
+    assert_eq!(
+        seen.len(),
+        5,
+        "Expected 5 moves, found {}:\n{seen:?}",
+        seen.len()
+    );
+}
+
+#[test]
+fn test_breaks_barrier() {
+    use crate::data::{AxialCoord, Barrier, HexMap};
+    // Check that barrier-breaking is handled correctly.
+    // start -> A(1) -> barrier(2) -> B(1) = 4 cost
+    // S A | B
+    let map: HexMap = serde_json::from_str(
+        r#"{
+        "qs": [0, 1, 2],
+        "rs": [0, 0, 0],
+        "nodes": [4352, 4352, 4353],
+        "finish_idx": 2
+    }"#,
+    )
+    .unwrap();
+    let pos = AxialCoord { q: 0, r: 0 };
+    let my_idx = map.node_idx(pos).unwrap();
+    assert_eq!(my_idx, 0);
+    let players = vec![Player::new(pos, &mut rand::rng())];
+    let mut game = GameState::from_parts(map, players, 0);
+    game.barriers.push(Barrier {
+        from_board: 0,
+        to_board: 1,
+        terrain: Terrain::Jungle,
+        cost: 2,
+        edges: vec![],
+    });
+
+    let seen = all_moves_helper(&[4, 0, 0], &game, my_idx, None);
+    assert_eq!(
+        seen.len(),
+        3,
+        "Expected 3 moves, found {}:\n{seen:?}",
+        seen.len()
+    );
+    assert_eq!(seen[0].num_barriers, 0);
+    assert_eq!(seen[1].num_barriers, 1);
+    assert_eq!(seen[2].num_barriers, 1);
 }
