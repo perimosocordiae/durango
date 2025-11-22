@@ -7,7 +7,11 @@ use crate::player::Player;
 use std::collections::VecDeque;
 
 pub trait Agent {
-    fn choose_action(&self, game: &GameState) -> PlayerAction;
+    fn choose_action(
+        &self,
+        game: &GameState,
+        rng: &mut dyn rand::RngCore,
+    ) -> PlayerAction;
 }
 
 pub(super) fn can_safely_trash(me: &Player) -> bool {

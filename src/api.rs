@@ -144,7 +144,7 @@ impl DurangoAPI {
     ) -> Result<()> {
         // Take the action.
         let mut ignored_idx = None;
-        match self.state.process_action(action)? {
+        match self.state.process_action(action, &mut rand::rng())? {
             ActionOutcome::Ok => {}
             ActionOutcome::GameOver => {
                 self.game_over = true;
@@ -187,7 +187,7 @@ impl DurangoAPI {
         while !self.game_over
             && let Some(ai) = &self.agents[self.state.curr_player_idx]
         {
-            let action = ai.choose_action(&self.state);
+            let action = ai.choose_action(&self.state, &mut rand::rng());
             self.do_action(&action, &mut notice_cb)?;
         }
         Ok(())

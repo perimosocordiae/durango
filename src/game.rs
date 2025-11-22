@@ -110,7 +110,7 @@ impl GameState {
     pub fn new(
         num_players: usize,
         preset: &str,
-        rng: &mut impl rand::Rng,
+        rng: &mut dyn rand::RngCore,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if !(2..=4).contains(&num_players) {
             return Err(
@@ -308,6 +308,7 @@ impl GameState {
     pub fn process_action(
         &mut self,
         action: &PlayerAction,
+        rng: &mut dyn rand::RngCore,
     ) -> Result<ActionOutcome, String> {
         let mut outcome = ActionOutcome::Ok;
         match action {
@@ -317,16 +318,13 @@ impl GameState {
                     outcome = ActionOutcome::IgnoreMoveIdx(idx);
                 }
             }
-            PlayerAction::Draw(draw) => {
-                self.handle_draw(draw, &mut rand::rng())?
-            }
+            PlayerAction::Draw(draw) => self.handle_draw(draw, rng)?,
             PlayerAction::Trash(trash) => self.handle_trash(trash)?,
             PlayerAction::Discard(cards) => {
                 self.players[self.curr_player_idx].discard_cards(cards);
             }
             PlayerAction::FinishTurn => {
-                self.players[self.curr_player_idx]
-                    .finish_turn(&mut rand::rng());
+                self.players[self.curr_player_idx].finish_turn(rng);
                 self.curr_player_idx += 1;
                 if self.curr_player_idx == self.players.len() {
                     self.round_idx += 1;
@@ -772,7 +770,7 @@ impl GameState {
     fn handle_draw(
         &mut self,
         draw: &DrawAction,
-        rng: &mut impl rand::Rng,
+        rng: &mut dyn rand::RngCore,
     ) -> Result<(), String> {
         let hand = &self.curr_player().hand;
         let hand_size = hand.len();

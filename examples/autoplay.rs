@@ -2,6 +2,7 @@ use clap::Parser;
 use durango::agent;
 use durango::game;
 use durango::game::ActionOutcome;
+use rand::{Rng, SeedableRng};
 
 #[derive(Parser)]
 struct Args {
@@ -19,6 +20,8 @@ struct Args {
     repeats: usize,
     #[clap(long, value_parser, value_delimiter = ',', default_value = "0,1")]
     ai_levels: Vec<usize>,
+    #[clap(long)]
+    seed: Option<u64>,
 }
 
 fn interactive_action(g: &game::GameState) -> game::PlayerAction {
@@ -52,12 +55,8 @@ struct RunInfo {
     winner: usize,
 }
 
-fn run_game(args: &Args) -> Option<RunInfo> {
-    let mut g = match game::GameState::new(
-        args.players,
-        &args.preset,
-        &mut rand::rng(),
-    ) {
+fn run_game(args: &Args, rng: &mut impl Rng) -> Option<RunInfo> {
+    let mut g = match game::GameState::new(args.players, &args.preset, rng) {
         Ok(game) => game,
         Err(e) => {
             eprintln!("Error creating game state: {}", e);
@@ -75,12 +74,12 @@ fn run_game(args: &Args) -> Option<RunInfo> {
         let act = if is_user {
             interactive_action(&g)
         } else {
-            ais[g.curr_player_idx].choose_action(&g)
+            ais[g.curr_player_idx].choose_action(&g, rng)
         };
         if !args.quiet {
             println!(" action: {:?}", &act);
         }
-        match g.process_action(&act) {
+        match g.process_action(&act, rng) {
             Ok(ActionOutcome::GameOver) => {
                 let finishers = g.players_at_finish();
                 let rounds = g.round_idx;
@@ -169,12 +168,17 @@ fn main() {
     let mut round_stats = Stats::new();
     let mut action_stats = Stats::new();
     let mut win_counts = vec![0; args.players];
+    let mut rng = if let Some(seed) = args.seed {
+        rand::rngs::StdRng::seed_from_u64(seed)
+    } else {
+        rand::rngs::StdRng::from_rng(&mut rand::rng())
+    };
     for i in 0..args.repeats {
         if all_presets {
             args.preset = ALL_PRESETS[i % ALL_PRESETS.len()].to_string();
         }
         let start_time = std::time::Instant::now();
-        if let Some(info) = run_game(&args) {
+        if let Some(info) = run_game(&args, &mut rng) {
             round_stats.add(info.rounds);
             action_stats.add(info.actions);
             win_counts[info.winner] += 1;

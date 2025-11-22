@@ -1,12 +1,15 @@
 use crate::agent::common::*;
 use crate::game::{GameState, PlayerAction};
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 #[derive(Default)]
 pub(super) struct RandomAgent {}
 impl Agent for RandomAgent {
-    fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let mut rng = rand::rng();
+    fn choose_action(
+        &self,
+        game: &GameState,
+        rng: &mut dyn RngCore,
+    ) -> PlayerAction {
         let me = game.curr_player();
         let mut valid_draws = valid_draw_actions(game);
         if !valid_draws.is_empty() {

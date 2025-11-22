@@ -4,13 +4,16 @@ use crate::data::{BonusToken, HexDirection, Terrain};
 use crate::game::{
     BuyCardAction, BuyIndex, DrawAction, GameState, MoveAction, PlayerAction,
 };
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 #[derive(Default)]
 pub(super) struct GreedyAgent {}
 impl Agent for GreedyAgent {
-    fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let mut rng = rand::rng();
+    fn choose_action(
+        &self,
+        game: &GameState,
+        rng: &mut dyn RngCore,
+    ) -> PlayerAction {
         let me = game.curr_player();
         let my_idx = game.map.node_idx(me.position).unwrap();
 

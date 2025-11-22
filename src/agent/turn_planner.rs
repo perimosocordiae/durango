@@ -1,3 +1,4 @@
+use rand::RngCore;
 use std::cell::OnceCell;
 
 use crate::agent::common::*;
@@ -34,8 +35,12 @@ impl StaticDistanceTurnPlanner {
     }
 }
 impl Agent for StaticDistanceTurnPlanner {
-    fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let (best, num_sims) = find_best_action(self, game, 0);
+    fn choose_action(
+        &self,
+        game: &GameState,
+        rng: &mut dyn RngCore,
+    ) -> PlayerAction {
+        let (best, num_sims) = find_best_action(self, game, rng, 0);
         if num_sims >= 10000 {
             println!("Sims = {num_sims}\t Score = {}", best.score);
         }
@@ -79,8 +84,12 @@ fn score_card(card: &Card) -> f64 {
 #[derive(Default)]
 pub(super) struct DynamicCostTurnPlanner {}
 impl Agent for DynamicCostTurnPlanner {
-    fn choose_action(&self, game: &GameState) -> PlayerAction {
-        let (best, num_sims) = find_best_action(self, game, 0);
+    fn choose_action(
+        &self,
+        game: &GameState,
+        rng: &mut dyn RngCore,
+    ) -> PlayerAction {
+        let (best, num_sims) = find_best_action(self, game, rng, 0);
         if num_sims >= 10000 {
             println!("Sims = {num_sims}\t Score = {}", best.score);
         }
@@ -152,6 +161,7 @@ const MAX_DEPTH: usize = 5;
 fn find_best_action(
     agent: &impl GameScorer,
     game: &GameState,
+    rng: &mut dyn RngCore,
     depth: usize,
 ) -> (ActionScore, usize) {
     // Hack: to avoid the possibility of an infinite loop of drawing cards,
@@ -178,7 +188,7 @@ fn find_best_action(
     let mut num_sims = 0;
     for action in all_actions(game) {
         let mut simulated_game = game.clone();
-        let outcome = match simulated_game.process_action(&action) {
+        let outcome = match simulated_game.process_action(&action, rng) {
             Ok(outcome) => outcome,
             Err(e) => {
                 let p = simulated_game.curr_player();
@@ -200,7 +210,8 @@ fn find_best_action(
             );
         }
         // Otherwise, recurse.
-        let (res, ct) = find_best_action(agent, &simulated_game, depth + 1);
+        let (res, ct) =
+            find_best_action(agent, &simulated_game, rng, depth + 1);
         num_sims += ct;
         if res.score > best.score {
             best = ActionScore {
@@ -233,11 +244,11 @@ fn find_best_action(
 // Get all valid actions for the current player, excluding draw-card actions.
 fn all_actions(game: &GameState) -> Vec<PlayerAction> {
     let mut actions = Vec::new();
-    for buy in valid_buy_actions(game) {
-        actions.push(PlayerAction::BuyCard(buy));
-    }
     for mv in valid_move_actions(game) {
         actions.push(PlayerAction::Move(mv));
+    }
+    for buy in valid_buy_actions(game) {
+        actions.push(PlayerAction::BuyCard(buy));
     }
     let me = game.curr_player();
     if can_safely_trash(me) {
@@ -254,9 +265,10 @@ mod tests {
 
     #[test]
     fn test_choose_action() {
-        let game = GameState::new(2, "first", &mut rand::rng()).unwrap();
+        let rng = &mut rand::rng();
+        let game = GameState::new(2, "first", rng).unwrap();
         let agent = StaticDistanceTurnPlanner::new(0);
-        let action = agent.choose_action(&game);
+        let action = agent.choose_action(&game, rng);
         println!("Chosen action: {:?}", action);
     }
 }

@@ -27,7 +27,10 @@ fn rev_sorted(xs: &[usize]) -> Vec<usize> {
 }
 
 impl Player {
-    pub(crate) fn new(position: AxialCoord, rng: &mut impl rand::Rng) -> Self {
+    pub(crate) fn new(
+        position: AxialCoord,
+        rng: &mut dyn rand::RngCore,
+    ) -> Self {
         let mut deck = vec![
             Card::explorer(),
             Card::explorer(),
@@ -102,7 +105,7 @@ impl Player {
     pub(crate) fn fill_hand(
         &mut self,
         hand_size: usize,
-        rng: &mut impl rand::Rng,
+        rng: &mut dyn rand::RngCore,
     ) {
         while self.hand.len() < hand_size {
             if self.deck.is_empty() && !self.discard.is_empty() {
@@ -118,13 +121,13 @@ impl Player {
         }
     }
     /// Set aside current hand into played, and draw a new hand.
-    pub(crate) fn replace_hand(&mut self, rng: &mut impl rand::Rng) {
+    pub(crate) fn replace_hand(&mut self, rng: &mut dyn rand::RngCore) {
         let num_current = self.hand.len();
         self.played.append(&mut self.hand);
         self.fill_hand(num_current, rng);
     }
     /// Clean up after the turn is over.
-    pub(crate) fn finish_turn(&mut self, rng: &mut impl rand::Rng) {
+    pub(crate) fn finish_turn(&mut self, rng: &mut dyn rand::RngCore) {
         // Discard all played cards.
         self.discard.append(&mut self.played);
         // Refill the hand for the next turn.
