@@ -416,10 +416,9 @@ impl HexMap {
         let start_idx = self.qs.partition_point(|&q| q < coord.q);
         let end_idx =
             self.qs[start_idx..].partition_point(|&q| q == coord.q) + start_idx;
-        // TODO: maybe just linear search here.
         self.rs[start_idx..end_idx]
-            .binary_search(&coord.r)
-            .ok()
+            .iter()
+            .position(|&r| r == coord.r)
             .map(|i| i + start_idx)
     }
     /// Get the node at a given coordinate.
